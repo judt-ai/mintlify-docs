@@ -1,0 +1,149 @@
+---
+title: 'JUDT REST API Overview: Conventions and Request Format'
+sidebarTitle: 'Overview'
+description: 'The JUDT REST API lets you manage tools, agents, and apps programmatically. Learn the base URL, request format, response structure, and error handling.'
+---
+
+The JUDT API is a RESTful HTTP API. Use it to configure tools, manage agents, invoke capabilities, and administer your apps — all programmatically.
+
+## Base URL
+
+All API requests are made to the following base URL:
+
+```text
+https://api.judt.com/pa
+```
+
+Every endpoint path is appended directly to this base. For example, to list tools you call `GET https://api.judt.com/v1/tools`.
+
+## Request Format
+
+All requests must send a JSON body and include the following headers:
+
+```
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+```
+
+- **`Authorization`** — required on every request. Pass your API key as a Bearer token.
+- **`Content-Type`** — required for any request that includes a body (`POST`, `PATCH`). Set it to `application/json`.
+
+Requests that send a body without `Content-Type: application/json`, or that send malformed JSON, will receive a `400 Bad Request` response.
+
+## Response Format
+
+All responses — success and error alike — return JSON. A successful response always includes a `success` field set to `true`, a `data` object containing the returned resource or result, and a `meta` object with request tracing information.
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "meta": {
+    "request_id": "req_abc123",
+    "timestamp": "2024-01-15T10:00:00Z"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | boolean | `true` for all non-error responses. |
+| `data` | object \| array | The returned resource, list, or operation result. |
+| `meta.request_id` | string | A unique identifier for this request. Include it when contacting support. |
+| `meta.timestamp` | string (ISO 8601) | The UTC time at which the server processed the request. |
+
+## Error Format
+
+When a request fails, `success` is `false` and the response includes an `error` object describing what went wrong.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "tool_not_found",
+    "message": "The specified tool_id does not exist or is not enabled for this app.",
+    "request_id": "req_abc123"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `error.code` | string | A machine-readable error code. Use this in error handling logic. |
+| `error.message` | string | A human-readable explanation of the error. |
+| `error.request_id` | string | The unique request identifier. Matches `meta.request_id` on success responses. |
+
+## HTTP Status Codes
+
+JUDT uses standard HTTP status codes to indicate the outcome of every request.
+
+| Status | Meaning | When you'll see it |
+|---|---|---|
+| `200 OK` | Request succeeded. | Successful `GET`, `PATCH`, or `POST` (non-creation) requests. |
+| `201 Created` | Resource created successfully. | Successful `POST` requests that create a new resource. |
+| `400 Bad Request` | The request was malformed or contained invalid parameters. | Missing required fields, wrong data types, or invalid JSON. |
+| `401 Unauthorized` | Authentication failed. | Missing, invalid, or expired API key. |
+| `403 Forbidden` | The authenticated key lacks permission. | Your key's scope does not cover this operation. |
+| `404 Not Found` | The requested resource does not exist. | Invalid resource ID or an endpoint that doesn't exist. |
+| `429 Too Many Requests` | Rate limit exceeded. | You've sent more requests than your plan allows within the window. |
+| `500 Internal Server Error` | An unexpected error occurred on JUDT's servers. | Rare; retry with exponential back-off and contact support if it persists. |
+
+## Rate Limits
+
+By default, JUDT enforces a limit of **60 requests per minute** per API key. If you exceed this limit, the API returns a `429 Too Many Requests` response until the current window resets.
+
+Every response includes the following rate limit headers so you can track your usage proactively:
+
+| Header | Description |
+|---|---|
+| `X-RateLimit-Limit` | The maximum number of requests allowed in the current window. |
+| `X-RateLimit-Remaining` | The number of requests remaining before you hit the limit. |
+| `X-RateLimit-Reset` | The UTC epoch timestamp (seconds) at which the window resets. |
+
+<Tip>
+  When `X-RateLimit-Remaining` reaches `0`, pause your requests and wait until the time indicated by `X-RateLimit-Reset` before retrying.
+</Tip>
+
+## Pagination
+
+List endpoints return paginated results. Use the `page` and `limit` query parameters to control which page of results you receive.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | The page number to retrieve (1-indexed). |
+| `limit` | integer | `20` | The number of items per page. Maximum is `100`. |
+
+A paginated response embeds the total item count, current page, and page size inside the `meta` object:
+
+```json
+{
+  "success": true,
+  "data": [ ... ],
+  "meta": {
+    "request_id": "req_abc123",
+    "timestamp": "2024-01-15T10:00:00Z",
+    "total": 84,
+    "page": 2,
+    "limit": 20
+  }
+}
+```
+
+| Meta field | Description |
+|---|---|
+| `meta.total` | Total number of items matching the query across all pages. |
+| `meta.page` | The page number returned in this response. |
+| `meta.limit` | The number of items per page used for this response. |
+
+To iterate through all results, increment `page` by 1 on each request until `page * limit >= total`.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api-reference/authentication">
+    Learn how to authenticate requests with API keys, understand key scopes, and handle auth errors.
+  </Card>
+  <Card title="List Tools" icon="wrench" href="/api-reference/tools/list">
+    Browse all tools available to your app and filter by status, category, or name.
+  </Card>
+</CardGroup>

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "JUDT",
+  "theme": "luma",
+  "colors": {
+    "primary": "#E43636",
+    "light": "#FFFFFF",
+    "dark": "#000000"
+  },
+  "favicon": {
+    "light": "/images/red-01.svg",
+    "dark": "/images/red-01.svg"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/tools",
+              "concepts/agents",
+              "concepts/apps"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/integrating-tools",
+              "guides/configuring-agents",
+              "guides/managing-apps"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/environment"
+            ]
+          },
+          {
+            "group": "Support",
+            "pages": [
+              "troubleshooting",
+              "changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api-reference/tools/list",
+              "api-reference/tools/invoke",
+              "api-reference/tools/configure"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api-reference/agents/create",
+              "api-reference/agents/get",
+              "api-reference/agents/update"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "api-reference/apps/list",
+              "api-reference/apps/create"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Go to Dashboard",
+      "href": "https://app.judt.com"
+    }
+  },
+  "background": {
+    "decoration": "gradient"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "seo": {
+    "indexing": "all"
+  }
+}

@@ -1,0 +1,47 @@
+---
+title: 'JUDT Platform Changelog: Features, Fixes, and Updates'
+sidebarTitle: 'Changelog'
+description: 'Track every new feature, improvement, and bug fix across all JUDT platform releases. Updated with each deployment so you stay current.'
+---
+
+The JUDT changelog tracks new features, improvements, and fixes as the platform evolves. Check back regularly or subscribe to updates from your dashboard.
+
+## January 2025
+
+<Note>
+  **New** — The **code-execution tool** is now generally available for all JUDT apps. Run sandboxed Python and JavaScript snippets directly from your app or agent with full support for standard library packages. Enable it from the **Tools** tab in your dashboard.
+</Note>
+
+- **Improved** — Tool invocation latency has been reduced by **30%** across all regions following infrastructure upgrades to the tool-runner fleet. No configuration changes are required on your end.
+- **Improved** — The `agent.run.completed` webhook event now includes a `tool_call_count` field in the payload, giving you a quick summary of how many tool invocations occurred during each run.
+- **Fixed** — Resolved an issue where per-tool `timeout_ms` overrides were being ignored in favor of the app-level timeout when an agent orchestrated multiple tools in a single run. Per-tool timeouts are now respected correctly.
+
+---
+
+## December 2024
+
+<Note>
+  **New** — Webhook events for **tool errors** (`tool.error`) are now available. Subscribe to this event to receive real-time notifications whenever a tool invocation fails, including the error code and message. See [Webhook Configuration](/configuration/settings#webhook-configuration) to enable it.
+</Note>
+
+- **Improved** — The **dashboard metrics** panel now supports an hourly breakdown view in addition to daily and weekly aggregations. Use it to pinpoint the exact hour a spike in errors or latency occurred.
+- **Improved** — The **API Keys** management page has been redesigned to show assigned scopes inline, making it easier to audit key permissions at a glance without opening each key's detail view.
+- **Fixed** — Fixed a regression where requests made with read-only scoped API keys incorrectly returned `403 Forbidden` on certain read endpoints. Read-only keys now work as expected across all `GET` routes.
+
+---
+
+## November 2024
+
+<Note>
+  **New** — **Multi-tool agents** are now supported. A single agent run can now invoke multiple different tools across a conversation turn — for example, searching the web, running code, and sending a notification in one step. Update your agent configuration to enable multiple tools simultaneously.
+</Note>
+
+- **Improved** — The **API Key scopes UI** has been updated with clearer scope descriptions and a permission preview that shows exactly which endpoints a key can access before you save it.
+- **Improved** — Agent run history in the dashboard now displays a per-tool breakdown of invocation counts and average latency for each run, making it easier to identify slow or overused tools.
+- **Fixed** — `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers were missing from responses served from the API cache layer. All responses now consistently include rate-limit headers regardless of whether the response was cached.
+
+---
+
+<Tip>
+  Subscribe to changelog notifications from your **Dashboard → Settings → Notifications** tab. Choose between email digests (daily or weekly) or in-dashboard alerts so you never miss a new feature or important fix.
+</Tip>

@@ -1,0 +1,118 @@
+---
+title: 'Update an Existing JUDT Agent Name, Tools, or Prompt'
+sidebarTitle: 'Update Agent'
+description: 'Partially update a JUDT agent using PATCH semantics — only the fields you send are modified. Note that the tools array is replaced in full, not merged.'
+---
+
+Use this endpoint to update an agent's name, tool list, system prompt, or timeout. Only the fields you include in the request body are changed — omitting a field leaves its current value intact. This makes it safe to update a single property without accidentally overwriting the rest of the agent's configuration.
+
+**Endpoint:** `PATCH https://api.judt.com/v1/agents/{agent_id}`
+
+**Required scope:** `write`
+
+---
+
+## Path Parameters
+
+<ParamField path="agent_id" type="string" required>
+  The unique identifier of the agent you want to update. Agent IDs are prefixed with `agent_` and are returned when you [create an agent](/api-reference/agents/create).
+</ParamField>
+
+---
+
+## Request Body
+
+All fields are optional. Include only the fields you want to change.
+
+<ParamField body="name" type="string">
+  A new display name for the agent. Replaces the existing name.
+</ParamField>
+
+<ParamField body="tools" type="string[]">
+  A new list of `tool_id` values for the agent. **This replaces the entire existing tools array** — include every tool you want the agent to have access to, not just the ones being added or removed.
+</ParamField>
+
+<ParamField body="system_prompt" type="string">
+  A new system prompt to replace the existing one. Pass an empty string `""` to clear the current system prompt and fall back to JUDT's default.
+</ParamField>
+
+<ParamField body="timeout_ms" type="integer">
+  A new maximum runtime in milliseconds for agent runs. Must be between `1000` and `300000`.
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  A partial metadata update. The key-value pairs you provide are **merged** into the existing metadata object — existing keys you do not include are preserved. To remove a key, set its value to `null`.
+</ParamField>
+
+---
+
+## Request Example
+
+The following example updates the agent's tool list and system prompt while leaving all other fields unchanged.
+
+<CodeGroup>
+
+```bash cURL
+curl --request PATCH \
+  --url https://api.judt.com/v1/agents/agent_abc123 \
+  --header 'Authorization: Bearer YOUR_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "tools": ["web-search", "data-lookup", "summarizer"],
+    "system_prompt": "You are an advanced research assistant. Cite all sources, provide confidence scores, and keep summaries under 200 words."
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.patch(
+    "https://api.judt.com/v1/agents/agent_abc123",
+    headers={
+        "Authorization": "Bearer YOUR_API_KEY",
+        "Content-Type": "application/json",
+    },
+    json={
+        "tools": ["web-search", "data-lookup", "summarizer"],
+        "system_prompt": (
+            "You are an advanced research assistant. "
+            "Cite all sources, provide confidence scores, "
+            "and keep summaries under 200 words."
+        ),
+    },
+)
+
+agent = response.json()["data"]
+print(agent["tools"])  # ['web-search', 'data-lookup', 'summarizer']
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+A successful request returns HTTP `200 OK` with the full updated agent object, reflecting your changes.
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "agent_abc123",
+    "app_id": "app_xyz789",
+    "name": "Research Assistant",
+    "tools": ["web-search", "data-lookup", "summarizer"],
+    "system_prompt": "You are an advanced research assistant. Cite all sources, provide confidence scores, and keep summaries under 200 words.",
+    "timeout_ms": 60000,
+    "metadata": {
+      "team": "growth",
+      "version": "1"
+    },
+    "created_at": "2024-01-15T10:00:00Z"
+  }
+}
+```
+
+<Note>
+  Updating `tools` **replaces the entire tools list** — it is not additive. If your agent currently has `["web-search", "data-lookup"]` and you send `"tools": ["summarizer"]`, the agent will only have access to `summarizer` after the update. Always include every tool you want the agent to retain.
+</Note>

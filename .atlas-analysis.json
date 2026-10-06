@@ -1,0 +1,109 @@
+{
+  "projectType": "saas",
+  "projectName": "JUDT",
+  "projectDescription": "JUDT is a batteries-included platform that gives apps and AI agents pre-built tools and capabilities — no complex infrastructure required.",
+  "theme": "luma",
+  "primaryColor": "#ef7025",
+  "lightColor": "#eec9bc",
+  "darkColor": "#4fa1ab",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/tools",
+              "concepts/agents",
+              "concepts/apps"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/integrating-tools",
+              "guides/configuring-agents",
+              "guides/managing-apps"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/environment"
+            ]
+          },
+          {
+            "group": "Support",
+            "pages": [
+              "troubleshooting",
+              "changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api-reference/tools/list",
+              "api-reference/tools/invoke",
+              "api-reference/tools/configure"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api-reference/agents/create",
+              "api-reference/agents/get",
+              "api-reference/agents/update"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "api-reference/apps/list",
+              "api-reference/apps/create"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Pre-built tools for AI agents — no infrastructure setup",
+    "Simple configuration-based tool selection",
+    "Dashboard for managing apps and agents",
+    "Agent-first design with batteries-included tooling",
+    "Transparent pricing with no hidden infrastructure costs",
+    "Changelog for tracking platform updates"
+  ],
+  "publicApiSurface": [
+    "GET /tools — list available tools",
+    "POST /tools/invoke — invoke a tool",
+    "POST /tools/configure — configure tool settings",
+    "POST /agents — create an agent",
+    "GET /agents/:id — retrieve agent details",
+    "PATCH /agents/:id — update agent configuration",
+    "GET /apps — list apps",
+    "POST /apps — create an app"
+  ]
+}

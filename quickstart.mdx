@@ -1,0 +1,139 @@
+---
+title: 'Quickstart: Build Your First JUDT Integration in Minutes'
+sidebarTitle: 'Quickstart'
+description: 'Create a JUDT account, get your API key, configure your first tool, and invoke it from your app or agent — all in under 10 minutes.'
+---
+
+In this quickstart you'll create a JUDT account, generate an API key, configure your first tool, and invoke it from your app or agent. By the end, you'll have made a real API call and seen a live response — a solid foundation for everything you'll build on top of JUDT.
+
+<Steps>
+  <Step title="Create Your Account">
+    Go to [app.judt.com](https://app.judt.com) and sign up for a free account. You can sign up with your email address or continue with GitHub or Google. Once you've verified your email, you'll land in the JUDT dashboard.
+  </Step>
+
+  <Step title="Get Your API Key">
+    In the dashboard, navigate to **Settings → API Keys** and click **Create New Key**. Give your key a name (e.g., `my-first-app`) and select the scopes you need — for this quickstart, enable `invoke`.
+
+    Copy the key and store it somewhere safe, such as a password manager or a `.env` file in your project.
+
+    <Warning>
+      Your API key is shown only once at creation time. If you lose it, you'll need to rotate it and generate a new one.
+    </Warning>
+  </Step>
+
+  <Step title="Configure a Tool">
+    Before you can invoke a tool, you need to enable it for your app. Use the JUDT API (or the dashboard's **Tools** page) to configure the `web-search` tool:
+
+    ```bash
+    curl -X POST https://api.judt.com/v1/tools/configure \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "tool_id": "web-search",
+        "enabled": true
+      }'
+    ```
+
+    A `200 OK` response confirms the tool is now active for your app.
+  </Step>
+
+  <Step title="Make Your First API Call">
+    With `web-search` configured, invoke it now:
+
+    <CodeGroup>
+      ```bash cURL
+      curl -X POST https://api.judt.com/v1/tools/invoke \
+        -H "Authorization: Bearer YOUR_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "tool_id": "web-search",
+          "input": {
+            "query": "latest AI news"
+          }
+        }'
+      ```
+
+      ```python Python
+      import requests
+
+      response = requests.post(
+          "https://api.judt.com/v1/tools/invoke",
+          headers={
+              "Authorization": "Bearer YOUR_API_KEY",
+              "Content-Type": "application/json",
+          },
+          json={
+              "tool_id": "web-search",
+              "input": {
+                  "query": "latest AI news"
+              },
+          },
+      )
+
+      print(response.json())
+      ```
+    </CodeGroup>
+
+    You'll receive a structured JSON response like this:
+
+    ```json
+    {
+      "tool_id": "web-search",
+      "status": "success",
+      "output": {
+        "results": [
+          {
+            "title": "OpenAI Announces New Model",
+            "url": "https://example.com/openai-news",
+            "snippet": "OpenAI today announced..."
+          },
+          {
+            "title": "Google DeepMind Research Update",
+            "url": "https://example.com/deepmind-update",
+            "snippet": "DeepMind researchers have published..."
+          }
+        ]
+      },
+      "latency_ms": 312
+    }
+    ```
+  </Step>
+
+  <Step title="Integrate with Your Agent">
+    Now that you've verified the API works, wire it into your app or AI agent. JUDT fits naturally into any agent loop — call `invoke` whenever your agent needs a tool, then feed the `output` back into the agent's context.
+
+    Here's a minimal example of an agent iteration that uses JUDT:
+
+    ```python
+    import requests
+
+    JUDT_API_KEY = "YOUR_API_KEY"
+    JUDT_BASE_URL = "https://api.judt.com/v1"
+
+    def invoke_tool(tool_id: str, input_data: dict) -> dict:
+        response = requests.post(
+            f"{JUDT_BASE_URL}/tools/invoke",
+            headers={
+                "Authorization": f"Bearer {JUDT_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"tool_id": tool_id, "input": input_data},
+        )
+        response.raise_for_status()
+        return response.json()["output"]
+
+    # Example agent step: search the web, then act on results
+    search_results = invoke_tool("web-search", {"query": "latest AI news"})
+    print(search_results)
+    ```
+  </Step>
+</Steps>
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how API key scopes work and how to rotate keys securely.
+  </Card>
+  <Card title="Integrating Tools" icon="plug" href="/guides/integrating-tools">
+    Go deeper on configuring tools and handling responses in your app.
+  </Card>
+</CardGroup>

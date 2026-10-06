@@ -1,0 +1,245 @@
+---
+title: 'Integrate JUDT Tools into Your Application or Agent'
+sidebarTitle: 'Integrate Tools'
+description: 'Enable, configure, and invoke JUDT tools from your application or AI agent — step-by-step, using the JUDT REST API with no extra infrastructure.'
+---
+
+This guide walks you through enabling a tool in JUDT and calling it from your application. You will configure the tool, then invoke it via the API — no infrastructure setup needed.
+
+## Prerequisites
+
+<Note>
+  Before you begin, make sure you have:
+  - A JUDT account
+  - An API key (see [Authentication](/authentication))
+  - At minimum one app created in your dashboard
+</Note>
+
+<Steps>
+  <Step title="Browse Available Tools">
+    Navigate to **Dashboard → Tools** to see the full catalogue of available tools. Each tool has a unique identifier — note the `tool_id` for the tool you want to enable. For example, the web search tool uses `tool_id: "web-search"`.
+  </Step>
+
+  <Step title="Enable the Tool for Your App">
+    Send a `POST` request to `/v1/tools/configure` to enable the tool and supply any tool-specific configuration options.
+
+    ```bash
+    curl -X POST https://api.judt.com/v1/tools/configure \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "app_id": "app_xyz789",
+        "tool_id": "web-search",
+        "enabled": true,
+        "config": {
+          "max_results": 5
+        }
+      }'
+    ```
+
+    A successful response confirms the tool is now active for your app:
+
+    ```json
+    {
+      "app_id": "app_xyz789",
+      "tool_id": "web-search",
+      "enabled": true,
+      "config": {
+        "max_results": 5
+      },
+      "configured_at": "2024-11-01T12:00:00Z"
+    }
+    ```
+  </Step>
+
+  <Step title="Call the Tool from Your Code">
+    Invoke the tool by sending a `POST` request to `/v1/tools/invoke` with your query or input payload.
+
+    <CodeGroup>
+      ```python Python
+      import requests
+
+      response = requests.post(
+          "https://api.judt.com/v1/tools/invoke",
+          headers={
+              "Authorization": "Bearer YOUR_API_KEY",
+              "Content-Type": "application/json",
+          },
+          json={
+              "tool_id": "web-search",
+              "input": {
+                  "query": "your query"
+              }
+          }
+      )
+
+      result = response.json()
+      print(result["result"])
+      ```
+
+      ```javascript Node.js
+      const response = await fetch("https://api.judt.com/v1/tools/invoke", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer YOUR_API_KEY",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool_id: "web-search",
+          input: {
+            query: "your query",
+          },
+        }),
+      });
+
+      const result = await response.json();
+      console.log(result.result);
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Handle the Response">
+    Every tool invocation returns a consistent JSON envelope with three top-level fields:
+
+    ```json
+    {
+      "tool_id": "web-search",
+      "result": {
+        "items": [
+          {
+            "title": "Example Result",
+            "url": "https://example.com",
+            "snippet": "A brief description of the result."
+          }
+        ]
+      },
+      "usage": {
+        "invocations": 1,
+        "latency_ms": 342
+      }
+    }
+    ```
+
+    | Field | Description |
+    |---|---|
+    | `tool_id` | The tool that was invoked |
+    | `result` | The tool's output — shape varies by tool |
+    | `usage` | Invocation count and latency for this call |
+
+    For error responses, JUDT returns a standard error object:
+
+    ```json
+    {
+      "error": {
+        "code": "tool_not_enabled",
+        "message": "The requested tool is not enabled for this app.",
+        "status": 403
+      }
+    }
+    ```
+
+    Check the `error.code` field in your error-handling logic and surface meaningful messages to your users.
+  </Step>
+
+  <Step title="Monitor Usage">
+    Open **Dashboard → Metrics** to review invocation counts, average latency, and error rates broken down by tool and time period. Use this data to tune your `config` values (for example, lowering `max_results` to reduce latency) and to set usage alerts before you approach plan limits.
+  </Step>
+</Steps>
+
+---
+
+## Common Integration Patterns
+
+<AccordionGroup>
+  <Accordion title="Using tools in a chat loop">
+    In an agent loop, you call tools iteratively based on the model's output. Here is a minimal example:
+
+    ```python
+    messages = [{"role": "user", "content": user_input}]
+
+    while True:
+        # Ask your LLM which tool to call (or to respond directly)
+        llm_response = call_llm(messages)
+
+        if llm_response.get("tool_call"):
+            tool_id = llm_response["tool_call"]["tool_id"]
+            tool_input = llm_response["tool_call"]["input"]
+
+            # Invoke the JUDT tool
+            tool_result = requests.post(
+                "https://api.judt.com/v1/tools/invoke",
+                headers={"Authorization": "Bearer YOUR_API_KEY"},
+                json={"tool_id": tool_id, "input": tool_input},
+            ).json()
+
+            # Feed the result back into the conversation
+            messages.append({"role": "tool", "content": tool_result["result"]})
+        else:
+            # The model has a final answer — break the loop
+            print(llm_response["content"])
+            break
+    ```
+  </Accordion>
+
+  <Accordion title="Passing user context to tools">
+    Some tools use a `context` field to personalise results or enforce access controls. Include it alongside your `input` payload:
+
+    ```json
+    {
+      "tool_id": "data-lookup",
+      "input": {
+        "query": "Q3 revenue"
+      },
+      "context": {
+        "user_id": "usr_abc123",
+        "org_id": "org_xyz789",
+        "locale": "en-US"
+      }
+    }
+    ```
+
+    The `context` object is forwarded to the tool at runtime. Use it to pass the authenticated user's identity, tenant information, or any other per-request metadata your tool needs.
+  </Accordion>
+
+  <Accordion title="Handling tool errors">
+    Use an exponential back-off retry pattern for transient errors (`5xx` status codes or `"code": "rate_limited"`):
+
+    ```python
+    import time
+
+    def invoke_with_retry(tool_id, input_payload, max_retries=3):
+        for attempt in range(max_retries):
+            response = requests.post(
+                "https://api.judt.com/v1/tools/invoke",
+                headers={"Authorization": "Bearer YOUR_API_KEY"},
+                json={"tool_id": tool_id, "input": input_payload},
+            )
+
+            if response.status_code == 200:
+                return response.json()
+
+            error = response.json().get("error", {})
+
+            # Do not retry client errors
+            if response.status_code < 500 and error.get("code") != "rate_limited":
+                raise Exception(f"Tool error: {error.get('message')}")
+
+            wait = 2 ** attempt
+            print(f"Retrying in {wait}s (attempt {attempt + 1}/{max_retries})...")
+            time.sleep(wait)
+
+        raise Exception("Max retries exceeded")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Invoke Tool API Reference" icon="code" href="/api-reference/tools/invoke">
+    Full parameter reference and response schemas for the `/v1/tools/invoke` endpoint.
+  </Card>
+  <Card title="Configure Agents" icon="robot" href="/guides/configuring-agents">
+    Learn how to attach tools to an AI agent and deploy it for your users.
+  </Card>
+</CardGroup>

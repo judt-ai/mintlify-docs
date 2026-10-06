@@ -1,0 +1,121 @@
+---
+title: 'Configure App Settings and Tool Parameters in JUDT'
+sidebarTitle: 'Settings'
+description: 'Configure your JUDT app settings, tool parameters, rate limits, and webhook notifications from the dashboard or programmatically via the API.'
+---
+
+JUDT gives you granular control over how your app and tools behave. You can adjust settings from the dashboard or programmatically via the API.
+
+## App Settings
+
+Each JUDT app has a set of top-level settings that control its runtime behavior, environment context, and notification routing.
+
+| Setting | Description | Default |
+|---|---|---|
+| `name` | Display name for your app | Your chosen name |
+| `environment` | Environment type (`development`, `staging`, `production`) | `development` |
+| `rate_limit` | Maximum API calls per minute | `60` |
+| `webhook_url` | URL to receive event notifications | None |
+| `timeout_ms` | Maximum tool invocation timeout in milliseconds | `30000` |
+
+You can update any of these settings from the **Settings** tab in your app dashboard, or via the API as shown below.
+
+## Tool-Level Settings
+
+Each tool in your JUDT app has its own configuration parameters that override or extend the app-level defaults. You define these when enabling a tool for your app.
+
+For example, a **web-search** tool accepts the following configuration:
+
+```json
+{
+  "tool": "web-search",
+  "config": {
+    "max_results": 10,
+    "safe_search": true,
+    "language": "en",
+    "timeout_ms": 5000
+  }
+}
+```
+
+Use the parameter reference below when configuring the web-search tool:
+
+<ParamField body="max_results" type="integer" default={10}>
+  Maximum number of results returned per search query.
+</ParamField>
+
+<ParamField body="safe_search" type="boolean" default={true}>
+  Filter unsafe or explicit content from search results.
+</ParamField>
+
+<ParamField body="language" type="string" default="en">
+  Language code for search results (e.g., `en`, `fr`, `de`).
+</ParamField>
+
+<ParamField body="timeout_ms" type="integer" default={5000}>
+  Per-tool timeout override in milliseconds. Takes precedence over the app-level `timeout_ms` when set.
+</ParamField>
+
+## Updating Settings via API
+
+Send a `PATCH` request to update one or more app settings at any time. Only the fields you include in the request body are changed — all other settings remain untouched.
+
+```bash
+PATCH https://api.judt.com/v1/apps/{app_id}
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+
+{
+  "rate_limit": 120,
+  "webhook_url": "https://your-app.com/webhooks/judt"
+}
+```
+
+A successful update returns the full updated app object:
+
+```json
+{
+  "id": "app_01j9kx4m2n8pqr",
+  "name": "My Production App",
+  "environment": "production",
+  "rate_limit": 120,
+  "webhook_url": "https://your-app.com/webhooks/judt",
+  "timeout_ms": 30000,
+  "updated_at": "2025-01-15T10:34:22Z"
+}
+```
+
+## Webhook Configuration
+
+JUDT can deliver real-time event notifications to any HTTPS endpoint you configure as your `webhook_url`. The following events are supported:
+
+| Event | Description |
+|---|---|
+| `tool.invoked` | Fired each time a tool is called by your app or an agent |
+| `tool.error` | Fired when a tool invocation returns an error result |
+| `agent.run.completed` | Fired when an agent run finishes, regardless of outcome |
+
+Every webhook request is a `POST` to your configured URL with a JSON body. Here is a sample payload for a `tool.invoked` event:
+
+```json
+{
+  "event": "tool.invoked",
+  "timestamp": "2025-01-15T10:34:22Z",
+  "app_id": "app_01j9kx4m2n8pqr",
+  "data": {
+    "tool_id": "web-search",
+    "invocation_id": "inv_7tqz2w9xmk",
+    "input": {
+      "query": "latest AI research papers"
+    },
+    "status": "success",
+    "duration_ms": 412
+  }
+}
+```
+
+JUDT signs every webhook request with an `X-JUDT-Signature` header so you can verify the payload came from JUDT. Check the **Webhooks** section of your dashboard for your signing secret.
+
+<Tip>
+  Use the **Send Test Event** button in the dashboard's Webhooks tab to trigger a sample payload to your endpoint — no real invocation required. This is the fastest way to verify your endpoint is reachable and processing payloads correctly before going live.
+</Tip>

@@ -1,0 +1,124 @@
+---
+title: 'Create a New JUDT App with an Environment and API Key'
+sidebarTitle: 'Create App'
+description: 'Provision a new JUDT app for your tools and agents. Choose a name and environment — the response includes a one-time API key you must store immediately.'
+---
+
+Use this endpoint to create a new app in your JUDT account. An app is the top-level container for your tools, agents, and API keys. You must specify a name and an environment at creation time — the environment determines which tier of rate limits and isolation guarantees apply. The response includes the app's initial API key, which you'll use to authenticate all requests scoped to this app.
+
+**Endpoint:** `POST https://api.judt.com/v1/apps`
+
+**Required scope:** `admin`
+
+---
+
+## Request Body
+
+<ParamField body="name" type="string" required>
+  A human-readable display name for the app — for example, `"My Product"` or `"Internal Tools – Staging"`. This name appears in the JUDT dashboard and in API responses.
+</ParamField>
+
+<ParamField body="environment" type="string" required>
+  The environment this app operates in. Must be one of:
+  - `development` — for local development and testing; lower rate limits, no SLA.
+  - `staging` — for pre-production validation; mirrors production configuration.
+  - `production` — for live traffic; full rate limits and uptime SLA apply.
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  An arbitrary set of key-value pairs you can attach to this app for your own tracking or display purposes. Keys and values must be strings. JUDT does not interpret this data.
+</ParamField>
+
+---
+
+## Request Example
+
+<CodeGroup>
+
+```bash cURL
+curl --request POST \
+  --url https://api.judt.com/v1/apps \
+  --header 'Authorization: Bearer YOUR_API_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "New App",
+    "environment": "development",
+    "metadata": {
+      "owner": "platform-team",
+      "project": "onboarding-v2"
+    }
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://api.judt.com/v1/apps",
+    headers={
+        "Authorization": "Bearer YOUR_API_KEY",
+        "Content-Type": "application/json",
+    },
+    json={
+        "name": "New App",
+        "environment": "development",
+        "metadata": {
+            "owner": "platform-team",
+            "project": "onboarding-v2",
+        },
+    },
+)
+
+app = response.json()["data"]
+print(app["id"])       # app_new123
+print(app["api_key"])  # sk_dev_... — save this immediately!
+```
+
+</CodeGroup>
+
+---
+
+## Response
+
+A successful request returns HTTP `201 Created` with the new app object, including its one-time API key.
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "app_new123",
+    "name": "New App",
+    "environment": "development",
+    "api_key": "sk_dev_...redacted...",
+    "created_at": "2024-01-20T09:00:00Z"
+  }
+}
+```
+
+<Warning>
+  The `api_key` in this response is shown **only once** and cannot be retrieved again. Copy and store it securely — for example, in your secrets manager or environment variables — before you close this response. If you lose it, you must rotate the key from the JUDT dashboard or via the key rotation endpoint.
+</Warning>
+
+<ResponseField name="id" type="string">
+  The unique identifier for the newly created app, prefixed with `app_`. You'll pass this as `app_id` when creating agents and configuring tools.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The display name you provided for the app.
+</ResponseField>
+
+<ResponseField name="environment" type="string">
+  The environment the app was created in — `development`, `staging`, or `production`.
+</ResponseField>
+
+<ResponseField name="api_key" type="string">
+  The initial API key for this app, used as the `Bearer` token in `Authorization` headers for requests scoped to this app. **Shown once only** — store it immediately.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp recording when the app was created, in UTC.
+</ResponseField>
+
+<Tip>
+  Your new app has no tools enabled by default. Head to [Configure Tools](/api-reference/tools/configure) to enable the tools you want agents in this app to access — tools must be enabled at the app level before you can assign them to an agent.
+</Tip>

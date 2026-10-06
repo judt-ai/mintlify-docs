@@ -1,0 +1,100 @@
+---
+title: 'Authenticate Requests to the JUDT API with API Keys'
+sidebarTitle: 'Authentication'
+description: 'Understand how JUDT API key authentication works: generate keys, assign scopes, rotate credentials, and handle auth errors in your app.'
+---
+
+JUDT uses API key authentication. Every request you make to the JUDT API must include your API key in the `Authorization` header. There are no sessions, cookies, or OAuth flows required for server-to-server calls — just your key on every request.
+
+## Getting Your API Key
+
+Follow these steps to generate an API key from the JUDT dashboard:
+
+1. Sign in to [app.judt.com](https://app.judt.com).
+2. Navigate to **Settings → API Keys**.
+3. Click **Create New Key**.
+4. Give your key a descriptive name (e.g., `production-agent` or `dev-local`).
+5. Select the [scopes](#key-scopes) your app requires.
+6. Click **Generate** and copy the key immediately.
+
+<Warning>
+  Your API key is displayed only once, at the moment of creation. Copy it and store it securely before closing the dialog. If you lose access to it, you'll need to rotate the key and update your app.
+</Warning>
+
+## Using Your API Key
+
+Include your API key in the `Authorization` header of every request using the `Bearer` scheme:
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+<CodeGroup>
+  ```bash cURL
+  curl -X POST https://api.judt.com/v1/tools/invoke \
+    -H "Authorization: Bearer YOUR_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "tool_id": "web-search",
+      "input": {
+        "query": "latest AI news"
+      }
+    }'
+  ```
+
+  ```python Python
+  import requests
+
+  JUDT_API_KEY = "YOUR_API_KEY"
+
+  response = requests.post(
+      "https://api.judt.com/v1/tools/invoke",
+      headers={
+          "Authorization": f"Bearer {JUDT_API_KEY}",
+          "Content-Type": "application/json",
+      },
+      json={
+          "tool_id": "web-search",
+          "input": {"query": "latest AI news"},
+      },
+  )
+
+  print(response.json())
+  ```
+</CodeGroup>
+
+## Key Scopes
+
+When you create an API key, you assign it one or more scopes. Scopes limit what the key can do, so you can follow the principle of least privilege and issue narrow keys for specific use cases.
+
+| Scope | Description | Use Case |
+|-------|-------------|----------|
+| `read` | Read-only access to tools and agents | Listing available tools, fetching configuration |
+| `write` | Create and update resources | Configuring tools, registering apps, managing settings |
+| `invoke` | Call tools at runtime | Invoking tools from your app or agent |
+
+A production agent typically needs the `invoke` scope. An admin script that manages tool configuration needs `write`. Combine scopes as needed — for example, `write` + `invoke` for an agent that both configures and calls tools.
+
+## Rotating Your Key
+
+Rotate a key whenever you suspect it has been exposed or as part of your regular security hygiene:
+
+1. Sign in to [app.judt.com](https://app.judt.com) and go to **Settings → API Keys**.
+2. Find the key you want to rotate and click **Rotate**.
+3. JUDT generates a new key value with the same name and scopes.
+4. Copy the new key and update your app's environment variable or secret manager.
+5. Once your app is using the new key and traffic is healthy, click **Revoke Old Key** to invalidate the previous value.
+
+## Error Responses
+
+If authentication fails, JUDT returns a standard HTTP error response with a JSON body describing the problem.
+
+| Status Code | Error | Meaning |
+|-------------|-------|---------|
+| `401 Unauthorized` | `invalid_api_key` | The key is missing, malformed, or has been revoked. Check that you're passing the header correctly and the key is still active. |
+| `403 Forbidden` | `insufficient_scope` | The key exists but lacks the required scope for this operation. Create a new key with the correct scopes or update the existing key's permissions in the dashboard. |
+| `429 Too Many Requests` | `rate_limited` | Your app has exceeded its request rate limit. Back off and retry after the duration indicated in the `Retry-After` response header. |
+
+<Tip>
+  Never hard-code your API key in source code. Store it in an environment variable (e.g., `JUDT_API_KEY`) and read it at runtime. This keeps your key out of version control and makes rotation simple — update one environment variable instead of hunting through your codebase.
+</Tip>

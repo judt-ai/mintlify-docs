@@ -1,0 +1,88 @@
+---
+title: 'JUDT API Authentication Reference: Bearer Tokens and Scopes'
+sidebarTitle: 'Auth Reference'
+description: 'Full reference for JUDT API authentication: bearer token format, key scopes, error codes, and best practices for secure key management.'
+---
+
+All JUDT API requests must include a valid API key in the `Authorization` header. This page is the technical reference for API authentication — covering header format, key scopes, error codes, and security guidance.
+
+## Authorization Header
+
+Every request you send to the JUDT API must carry an `Authorization` header using the Bearer token scheme.
+
+<ParamField header="Authorization" type="string" required>
+  Your JUDT API key, prefixed with the word `Bearer` and a single space. The format is:
+
+  ```
+  Authorization: Bearer YOUR_API_KEY
+  ```
+
+  API keys are generated in the JUDT dashboard under **Settings → API Keys**. Keys are prefixed with `judt_` so they're easy to identify if they appear in logs.
+</ParamField>
+
+Here is a complete example request using cURL:
+
+```bash
+curl --request GET \
+  --url https://api.judt.com/v1/tools \
+  --header 'Authorization: Bearer judt_live_xxxxxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json'
+```
+
+## Key Scopes
+
+Every API key is issued with one or more **scopes** that define exactly which operations it may perform. Scopes follow the principle of least privilege — a key without a required scope is rejected with a `403 Forbidden` response even if the key itself is valid.
+
+| Scope | Description | Endpoints granted |
+|---|---|---|
+| `read` | Read existing resources — tools, agents, and apps. | All `GET` endpoints. |
+| `write` | Create and update resources. | All `POST` and `PATCH` endpoints (excluding invocation and admin). |
+| `invoke` | Invoke tools and run agents. | `POST /tools/invoke`, `POST /agents/:id/run` |
+| `admin` | Manage API keys and configure app-level settings. | `DELETE` endpoints, settings endpoints. |
+
+<Note>
+  Scopes are additive. A key with both `read` and `write` can perform all read and write operations. You assign scopes at key creation time; you cannot add scopes to an existing key without regenerating it.
+</Note>
+
+## Authentication Errors
+
+When authentication fails, the API returns a `401 Unauthorized` or `403 Forbidden` response with a machine-readable `error.code`. Use these codes in your error handling logic to distinguish between different failure modes.
+
+<ResponseField name="error.code" type="string">
+  A string identifying the specific authentication failure. Possible values are described below.
+</ResponseField>
+
+| HTTP Status | Error Code | Cause | Resolution |
+|---|---|---|---|
+| `401` | `missing_api_key` | The `Authorization` header was not included in the request. | Add `Authorization: Bearer YOUR_API_KEY` to every request. |
+| `401` | `invalid_api_key` | The key does not exist in JUDT's system, or has been revoked. | Verify the key value is correct. If it was revoked, generate a new key in the dashboard. |
+| `401` | `expired_api_key` | The key existed but has passed its configured expiration date. | Generate a new key. Consider setting a longer expiry or no expiry for long-running integrations. |
+| `403` | `insufficient_scope` | The key is valid but lacks the scope required for this operation. | Re-issue the key with the appropriate scope, or use a key that already has it. |
+
+An `invalid_api_key` response looks like this:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "invalid_api_key",
+    "message": "The API key provided is invalid or has been revoked.",
+    "request_id": "req_abc123"
+  }
+}
+```
+
+## Security Best Practices
+
+Treat your JUDT API keys with the same care as passwords. Follow these practices to keep your integration secure:
+
+- **Never expose keys in client-side code.** API keys embedded in browser JavaScript, mobile app bundles, or public repositories can be harvested and abused. Always call the JUDT API from a server-side environment.
+- **Use environment variables.** Store keys in environment variables (e.g., `JUDT_API_KEY`) rather than hard-coding them in source files. Use a secrets manager in production.
+- **Rotate keys quarterly.** Even if a key shows no signs of compromise, rotating it every 90 days limits the blast radius of an undetected leak.
+- **Use the minimum required scope.** Issue each key with only the scopes your integration actually needs. A read-only integration should never hold an `admin`-scoped key.
+- **Use separate keys per environment.** Give your development, staging, and production environments distinct keys. That way you can revoke or rotate one without affecting the others.
+- **Monitor key usage in the dashboard.** The JUDT dashboard shows per-key request volume, error rates, and last-used timestamps. Review this regularly to spot unexpected activity.
+
+<Tip>
+  Create a dedicated API key for each environment (development, staging, production) and each service that integrates with JUDT. Isolated keys make it fast and safe to revoke access for one environment or service without disrupting the others.
+</Tip>

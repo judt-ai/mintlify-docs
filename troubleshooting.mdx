@@ -1,0 +1,200 @@
+---
+title: 'Troubleshoot JUDT API, Tool Invocation, and Agent Issues'
+sidebarTitle: 'Troubleshooting'
+description: 'Solutions to the most common JUDT issues — authentication errors, tool invocation failures, rate limiting, and agent timeouts, with concrete fixes.'
+---
+
+This page covers the most common issues customers encounter when using JUDT and how to resolve them.
+
+## Authentication Errors
+
+<AccordionGroup>
+
+<Accordion title="401 Unauthorized">
+  **Causes**
+
+  - Your API key is missing from the request.
+  - The `Authorization` header is formatted incorrectly.
+
+  **Fix**
+
+  Ensure every request includes the header in the exact format below — the word `Bearer` must be present and followed by a single space:
+
+  ```http
+  Authorization: Bearer YOUR_API_KEY
+  ```
+
+  Double-check that you are reading the key from the correct environment variable and that the variable is actually set in your current environment.
+</Accordion>
+
+<Accordion title="403 Forbidden">
+  **Causes**
+
+  - Your API key does not have the scope required by the endpoint you are calling (for example, calling a write endpoint with a read-only key).
+
+  **Fix**
+
+  1. Open the **API Keys** tab in your dashboard.
+  2. Review the scopes assigned to the key in use.
+  3. Generate a new key with the required scopes, update your application to use the new key, and revoke the old one.
+</Accordion>
+
+<Accordion title="Key not working after rotation">
+  **Cause**
+
+  After rotating your API key, any service still holding the old key will receive 401 errors.
+
+  **Fix**
+
+  Identify every place your old key is used — environment variables, CI/CD secrets, hosted services, and third-party integrations — and update each one to the new key. Rotate keys in a maintenance window where possible, or use a zero-downtime rotation strategy by issuing the new key first and revoking the old key only after all services are updated.
+</Accordion>
+
+</AccordionGroup>
+
+## Tool Invocation Errors
+
+<AccordionGroup>
+
+<Accordion title="Tool not found (404)">
+  **Causes**
+
+  - The `tool_id` value in your request contains a typo.
+  - The tool exists but has not been enabled for your app.
+
+  **Fix**
+
+  1. Verify the exact `tool_id` by listing all available tools:
+     ```bash
+     GET https://api.judt.com/v1/tools
+     Authorization: Bearer YOUR_API_KEY
+     ```
+  2. In your dashboard, navigate to **Tools** and confirm the tool is toggled **on** for your app.
+</Accordion>
+
+<Accordion title="Tool invocation timeout">
+  **Causes**
+
+  - The tool is taking longer than your configured `timeout_ms` to respond.
+  - Network latency between your app and the JUDT API is higher than expected.
+
+  **Fix**
+
+  - Increase `timeout_ms` in your app settings or override it at the tool-config level. See [App Settings](/configuration/settings) for details.
+  - Run a latency check from your deployment region to `api.judt.com` to rule out network issues.
+  - If the tool consistently times out even with a generous timeout, contact support — the tool itself may be experiencing degraded performance.
+</Accordion>
+
+<Accordion title="Invalid input schema">
+  **Cause**
+
+  The input you sent does not match the schema the tool expects — a required field is missing, a value is the wrong type, or an enum value is not recognized.
+
+  **Fix**
+
+  Fetch the full list of available tools and locate the entry for the tool you are calling to inspect its expected input schema:
+
+  ```bash
+  GET https://api.judt.com/v1/tools
+  Authorization: Bearer YOUR_API_KEY
+  ```
+
+  Each tool object in the response includes an `input_schema` field that describes every required and optional field, its type, and any validation constraints. Compare your payload against that schema to identify the mismatch.
+</Accordion>
+
+<Accordion title="Tool returned an error result">
+  **Cause**
+
+  A tool can execute successfully at the HTTP level (returning a `200 OK`) but still report a logical error inside the response body. This happens when the underlying service the tool calls — for example, a search API or a code-execution sandbox — returns an error.
+
+  **Fix**
+
+  Always check the `status` field in the response body, not just the HTTP status code:
+
+  ```json
+  {
+    "invocation_id": "inv_7tqz2w9xmk",
+    "status": "error",
+    "error": {
+      "code": "upstream_failure",
+      "message": "The upstream search provider returned a 503."
+    }
+  }
+  ```
+
+  Inspect `error.code` and `error.message` for actionable details, and implement retry logic for transient upstream failures.
+</Accordion>
+
+</AccordionGroup>
+
+## Rate Limiting
+
+When your app exceeds its configured `rate_limit`, JUDT returns a `429 Too Many Requests` response. Every API response includes the following rate-limit headers to help you manage your usage:
+
+| Header | Description |
+|---|---|
+| `X-RateLimit-Limit` | The maximum number of requests allowed per minute |
+| `X-RateLimit-Remaining` | The number of requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp (seconds) when the current window resets |
+
+Use these headers to implement proactive backoff rather than waiting for a 429:
+
+```javascript Node.js
+async function invokeWithBackoff(toolId, input, retries = 3) {
+  const response = await client.post(`/tools/${toolId}/invoke`, input);
+
+  if (response.status === 429) {
+    const resetAt = parseInt(response.headers['x-ratelimit-reset'], 10);
+    const waitMs = (resetAt * 1000) - Date.now() + 100; // add 100 ms buffer
+    console.warn(`Rate limited. Retrying in ${waitMs}ms...`);
+    await new Promise((r) => setTimeout(r, waitMs));
+    return retries > 0 ? invokeWithBackoff(toolId, input, retries - 1) : null;
+  }
+
+  return response.data;
+}
+```
+
+If you consistently hit your rate limit, increase the `rate_limit` setting for your app from the dashboard or via the [settings API](/configuration/settings).
+
+## Agent Issues
+
+<AccordionGroup>
+
+<Accordion title="Agent not using the right tools">
+  **Causes**
+
+  - The agent's system prompt does not clearly describe when to use which tool.
+  - The tool is not enabled for the agent.
+
+  **Fix**
+
+  - Update your agent's system prompt to explicitly name the tools available and describe the conditions under which each should be used. For example: _"Use the `web-search` tool when the user asks for current information or news."_
+  - In your dashboard, open the agent configuration and verify that all required tools are listed under **Enabled Tools**.
+</Accordion>
+
+<Accordion title="Agent run times out">
+  **Cause**
+
+  The agent run is exceeding the configured run-level timeout, often because it is invoking multiple tools sequentially or a single slow tool is taking longer than expected.
+
+  **Fix**
+
+  - Increase the per-agent timeout in your agent configuration settings.
+  - Review which tools the agent is calling and raise `timeout_ms` for slow tools at the tool-config level.
+  - If the agent is running many sequential tool calls, consider breaking the task into smaller, focused agent runs.
+</Accordion>
+
+</AccordionGroup>
+
+## Getting Help
+
+If the steps on this page do not resolve your issue, reach out directly or check the current platform status.
+
+<CardGroup cols={2}>
+  <Card title="Contact Support" icon="envelope" href="mailto:support@judt.com">
+    Email our support team with your `app_id`, the affected `invocation_id` or `run_id`, and a description of the issue.
+  </Card>
+  <Card title="Check Status" icon="signal" href="https://status.judt.com">
+    View real-time and historical uptime for all JUDT platform components, including the API, tool runners, and webhooks.
+  </Card>
+</CardGroup>

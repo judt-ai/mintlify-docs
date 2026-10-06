@@ -1,0 +1,67 @@
+---
+title: 'Agents: Autonomous AI Entities Powered by JUDT Tools'
+sidebarTitle: 'Agents'
+description: 'JUDT Agents are AI-powered entities that use your configured tools to accomplish goals. Learn how agents work, what they contain, and how to manage them.'
+---
+
+In JUDT, an Agent is a named AI entity that you configure to use a set of tools. Agents act on behalf of your users or your product, invoking tools to complete tasks — from researching a topic to executing code — without you needing to orchestrate every step manually.
+
+## What Is an Agent?
+
+An agent bundles together everything needed to act autonomously on a goal:
+
+- **Name** — a human-readable identifier for the agent within your app.
+- **Enabled tools** — the specific JUDT tools the agent is allowed to invoke.
+- **System prompt** *(optional)* — instructions that shape the agent's behavior, tone, and decision-making.
+- **Tool configuration** — any per-tool settings that govern how the agent interacts with each capability.
+
+You create and manage agents through the JUDT dashboard or the API. Once created, an agent is ready to receive tasks and use its tools to complete them.
+
+## Agent Object
+
+The following is an example of an agent object returned by the JUDT API:
+
+```json
+{
+  "id": "agent_abc123",
+  "app_id": "app_xyz789",
+  "name": "Research Assistant",
+  "status": "active",
+  "tools": ["web-search", "data-lookup"],
+  "system_prompt": "You are a research assistant. Use available tools to answer questions accurately.",
+  "created_at": "2024-01-15T10:00:00Z",
+  "updated_at": "2024-01-20T14:32:00Z"
+}
+```
+
+The `tools` array lists every tool the agent is permitted to call. The `system_prompt` gives the underlying model its behavioral context. Both fields are fully editable after creation via `PATCH /agents/:id`.
+
+## Creating an Agent
+
+You can create an agent in minutes from the JUDT dashboard or by calling the Agents API endpoint. At creation time you supply a name, choose which tools to enable, and optionally provide a system prompt.
+
+For a complete step-by-step walkthrough — including how to set advanced options and test your agent before deploying it — see the [Configuring Agents guide](/guides/configuring-agents).
+
+## Agent Tool Access
+
+Agents only have access to the tools you explicitly enable for them. Even if your app has ten tools configured, an agent only sees — and can only invoke — the subset you assign to it. Treat this as a security boundary: follow the principle of least privilege and give each agent only the tools it genuinely needs to do its job.
+
+<Note>
+  The number of tools enabled for an agent and the volume of tool invocations it makes directly affect your billing. Each tool call counts toward your app's usage quota. Review your agent's tool assignments and monitor invocation counts in the dashboard to keep costs predictable.
+</Note>
+
+## Agent vs. Direct API
+
+JUDT gives you two ways to use tools:
+
+| | **Direct API** | **Agent** |
+|---|---|---|
+| **Tool selection** | You choose the tool and call it explicitly | The agent selects and calls tools autonomously |
+| **Orchestration** | Your code manages the flow | The agent manages multi-step reasoning and tool chaining |
+| **Best for** | Deterministic, single-step operations | Open-ended tasks that may require multiple tools |
+
+Use the direct API when you know exactly which tool to call and want full control over the request. Use an agent when you want AI-driven decision-making to handle tool selection and sequencing on your behalf.
+
+<Tip>
+  Ready to build your first agent? Follow the [Configuring Agents](/guides/configuring-agents) guide for a hands-on walkthrough from creation to first invocation.
+</Tip>

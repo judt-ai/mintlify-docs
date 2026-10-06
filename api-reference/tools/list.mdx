@@ -1,0 +1,151 @@
+---
+title: 'GET /v1/tools — List All Available JUDT Platform Tools'
+sidebarTitle: 'List Tools'
+description: 'Retrieve every tool available on the JUDT platform. Filter by category, app, or enabled status and paginate through large result sets.'
+---
+
+Use this endpoint to retrieve all tools available on the JUDT platform. You can filter results by category, limit the response to tools enabled for a specific app, and paginate through large result sets. This is the starting point for discovering which tools you can invoke at runtime.
+
+**Endpoint:** `GET https://api.judt.com/v1/tools`
+
+**Required scope:** `read`
+
+---
+
+## Query Parameters
+
+<ParamField query="app_id" type="string">
+  Filter results to tools that are configured for a specific app. Use this alongside `enabled=true` to see only the tools your app can actively invoke.
+</ParamField>
+
+<ParamField query="category" type="string">
+  Filter tools by category. Accepted values:
+
+  - `search` — web and semantic search tools
+  - `data` — structured data retrieval and transformation tools
+  - `code` — code execution and analysis tools
+  - `communication` — email, messaging, and notification tools
+</ParamField>
+
+<ParamField query="enabled" type="boolean">
+  When `true`, returns only tools that are currently enabled for the given `app_id`. Requires `app_id` to be set; ignored if `app_id` is omitted.
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  The page number to retrieve. Starts at `1`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  The number of tools to return per page. Maximum value is `100`.
+</ParamField>
+
+---
+
+## Request Example
+
+The following request retrieves all tools currently enabled for the app `app_xyz789`:
+
+```bash
+curl https://api.judt.com/v1/tools \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -G \
+  --data-urlencode "app_id=app_xyz789" \
+  --data-urlencode "enabled=true" \
+  --data-urlencode "limit=20" \
+  --data-urlencode "page=1"
+```
+
+---
+
+## Response
+
+A successful request returns a `200 OK` with the following structure:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "web-search",
+      "name": "Web Search",
+      "category": "search",
+      "description": "Search the web and return ranked results",
+      "enabled": true,
+      "config": {
+        "max_results": 10,
+        "safe_search": true
+      }
+    }
+  ],
+  "meta": {
+    "total": 12,
+    "page": 1,
+    "limit": 20,
+    "request_id": "req_abc123"
+  }
+}
+```
+
+### Response Fields
+
+<ResponseField name="success" type="boolean">
+  `true` when the request was processed without errors.
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  An array of tool objects matching your query filters.
+
+  <Expandable title="Tool object fields">
+    <ResponseField name="id" type="string">
+      The unique identifier for the tool. Use this value as `tool_id` when invoking or configuring the tool.
+    </ResponseField>
+
+    <ResponseField name="name" type="string">
+      The human-readable display name of the tool.
+    </ResponseField>
+
+    <ResponseField name="category" type="string">
+      The category the tool belongs to: `search`, `data`, `code`, or `communication`.
+    </ResponseField>
+
+    <ResponseField name="description" type="string">
+      A short description of what the tool does.
+    </ResponseField>
+
+    <ResponseField name="enabled" type="boolean">
+      Whether the tool is currently enabled for the requested `app_id`. Always `false` if no `app_id` was provided.
+    </ResponseField>
+
+    <ResponseField name="config" type="object">
+      The active configuration for this tool under the given app. Field names and types vary by tool. Returns an empty object if the tool has not been configured.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Metadata about the response.
+
+  <Expandable title="Meta fields">
+    <ResponseField name="meta.total" type="integer">
+      Total number of tools matching your filters across all pages.
+    </ResponseField>
+
+    <ResponseField name="meta.page" type="integer">
+      The current page number.
+    </ResponseField>
+
+    <ResponseField name="meta.limit" type="integer">
+      The number of results per page used for this response.
+    </ResponseField>
+
+    <ResponseField name="meta.request_id" type="string">
+      A unique identifier for this request. Include this value when contacting support to help diagnose issues.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+<Note>
+  **Pagination** — If `meta.total` exceeds your `limit`, increment the `page` parameter to retrieve subsequent pages. For example, if `total` is `45` and `limit` is `20`, you will need pages `1`, `2`, and `3` to retrieve all results.
+</Note>
