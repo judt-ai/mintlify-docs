@@ -1,0 +1,16 @@
+@import url("https://api.fontshare.com/v2/css?f[]=general-sans@700&f[]=switzer@300&display=swap");
+
+:root {
+  --font-heading: "General Sans", sans-serif;
+  --font-body: "Switzer", sans-serif;
+}
+
+body {
+  font-family: var(--font-body) !important;
+  font-weight: 300;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading) !important;
+  font-weight: 700;
+}

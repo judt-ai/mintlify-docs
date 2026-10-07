@@ -227,9 +227,13 @@
     "href": "https://judt.ai"
   },
   "fonts": {
-    "family": "switzer",
-    "weight": 300,
-    "source": "https://fonts.cdnfonts.com/s/85792/Switzer-Light.woff",
-    "format": "woff2"
+    "heading": {
+      "family": "General Sans",
+      "weight": 700
+    },
+    "body": {
+      "family": "switzer",
+      "weight": 300
+    }
   }
 }
