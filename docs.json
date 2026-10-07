@@ -218,7 +218,7 @@
   },
   "description": "Give your agent the ability to build and publish powerful, realtime, dynamic Apps and Websites.",
   "appearance": {
-    "default": "dark",
+    "default": "light",
     "strict": true
   },
   "logo": {
