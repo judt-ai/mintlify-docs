@@ -235,5 +235,12 @@
       "family": "switzer",
       "weight": 300
     }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view"
+    ],
+    "display": "toc"
   }
 }
