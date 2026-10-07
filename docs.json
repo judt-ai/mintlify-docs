@@ -207,7 +207,7 @@
     "primary": {
       "type": "button",
       "label": "Go to Dashboard",
-      "href": "https://app.judt.com"
+      "href": "https://judt.ai/apps"
     }
   },
   "icons": {
@@ -225,5 +225,11 @@
     "light": "/images/judt-logo.svg",
     "dark": "/images/judt-logo.svg",
     "href": "https://judt.ai"
+  },
+  "fonts": {
+    "family": "switzer",
+    "weight": 300,
+    "source": "https://fonts.cdnfonts.com/s/85792/Switzer-Light.woff",
+    "format": "woff2"
   }
 }
