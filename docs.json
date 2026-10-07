@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "JUDT",
-  "theme": "luma",
+  "name": "Judt",
+  "theme": "maple",
   "colors": {
     "primary": "#E43636",
     "light": "#FFFFFF",
@@ -210,13 +210,20 @@
       "href": "https://app.judt.com"
     }
   },
-  "background": {
-    "decoration": "gradient"
-  },
   "icons": {
     "library": "lucide"
   },
   "seo": {
     "indexing": "all"
+  },
+  "description": "Give your agent the ability to build and publish powerful, realtime, dynamic Apps and Websites.",
+  "appearance": {
+    "default": "dark",
+    "strict": true
+  },
+  "logo": {
+    "light": "/images/judt-logo.svg",
+    "dark": "/images/judt-logo.svg",
+    "href": "https://judt.ai"
   }
 }
