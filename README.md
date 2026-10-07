@@ -1,55 +1,31 @@
-# Mintlify Starter Kit
+# judt docs
 
-Use the starter kit to get your docs deployed and ready to customize.
+The source of the judt documentation site, built with [Mintlify](https://mintlify.com).
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## Layout
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+The site has three tabs, and each tab has its own directory:
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+| Directory | Tab | Covers |
+|---|---|---|
+| `manage/` | Manage Apps | Operating Apps: the API, the MCP server, the in-product agent, tokens, sandboxes, deployments, and Secrets. |
+| `build/` | Build Apps | Writing the code inside an App: `wrangler.json`, bindings, storage, background work, and the celld runtime. |
+| `api-reference/` | API Reference | One page for each endpoint, generated from `api-reference/openapi.json`. |
 
-## AI-assisted writing
+The `docs.json` file sets the navigation and the site configuration.
 
-Set up your AI coding tool to work with Mintlify:
+## Update the API reference
+
+The `api-reference/openapi.json` file is a copy of `docs/openapi/public.json` from the `judt-ai/judt` repository. After the API changes, copy the file again. If an endpoint is added or removed, also update the API Reference groups in `docs.json`.
+
+## Preview locally
+
+Install the [Mintlify CLI](https://www.npmjs.com/package/mint), and then start the preview server in this directory:
 
 ```bash
-npx skills add https://mintlify.com/docs
+pnpm dlx mint dev
 ```
 
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
+## Writing style
 
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
-mint dev
-```
-
-View your local preview at `http://localhost:3000`.
-
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+Write in the Google developer documentation style. Name the runtime "celld, the judt runtime" on its first mention in a page, and "celld" after that.

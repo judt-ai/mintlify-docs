@@ -1,0 +1,126 @@
+---
+title: "KV"
+description: "Read and write values by key, with an optional expiration time."
+---
+KV stores values by string key, with an optional expiry and optional metadata. Use it for sessions, settings, feature flags, tokens, and cached API responses. The Cache API always misses on celld, the judt runtime, so use KV as your cache.
+
+## Strong consistency on celld
+
+On celld, KV is strongly consistent. One owner serves each namespace, so a `get` call always sees the last `put` call, from every node. Cloudflare's guidance about stale reads doesn't apply.
+
+This design has the following consequences:
+
+- Each namespace has one writer.
+- There is no edge cache. Each read goes to the namespace owner.
+- KV still has no atomic increment and no compare-and-swap. For more information, see [When not to use KV](#when-not-to-use-kv).
+
+## Configure the binding
+
+To add a namespace, declare it in the `wrangler.json` file:
+
+```json wrangler.json
+{ "kv_namespaces": [{ "binding": "SESSIONS", "id": "sessions" }] }
+```
+
+The configuration follows these rules:
+
+- The `binding` and `id` keys are required. Any stable string is a valid `id` value.
+- Deploy refuses every other key, including `preview_id`.
+- You don't provision the namespace. celld creates it on first use.
+- Use a separate namespace for each type of data, for example `SESSIONS`, `FLAGS`, and `CACHE`. Each namespace has its own writer.
+
+<Warning>
+Don't change the `id` value after data exists. A different `id` opens an empty namespace, and the data stays under the old `id`.
+</Warning>
+
+## Read and write values
+
+The following example writes, reads, and deletes values:
+
+```js
+// Write a value with a one-hour expiry and metadata
+await env.SESSIONS.put(key, JSON.stringify(value), { expirationTtl: 3600, metadata: { userId } });
+
+// Read a value: "text" (the default), "json", "arrayBuffer", or "stream"
+const value = await env.SESSIONS.get(key, "json");
+
+// Read a value with its metadata
+const { value: session, metadata } = await env.SESSIONS.getWithMetadata(key, "json");
+
+// Delete a value
+await env.SESSIONS.delete(key);
+
+// Read up to 100 keys at once; returns a Map
+const flags = await env.FLAGS.get(["beta", "dark-mode"], "json");
+```
+
+Keep the following behavior in mind:
+
+- A missing key returns `null`.
+- The `expiration` option is a time in epoch seconds. The `expirationTtl` option is a number of seconds after the write. The minimum expiry is 60 seconds.
+- The `cacheTtl` option has no effect.
+
+## List keys
+
+The `list` method returns a maximum of 1,000 keys for each page, in byte order. To read every page, follow the cursor:
+
+```js
+let cursor;
+do {
+  const page = await env.SESSIONS.list({ prefix: `user:${id}:`, cursor });
+  for (const { name, expiration, metadata } of page.keys) {
+    // Handle each key
+  }
+  cursor = page.list_complete ? undefined : page.cursor;
+} while (cursor);
+```
+
+Because keys sort in byte order, design your key prefixes for the queries that you run, for example `user:USER_ID:` for all keys of one user.
+
+## Limits
+
+The following table lists the limits for KV on celld. A call over a limit throws.
+
+| Item | Limit |
+|---|---|
+| Key size | 512 bytes |
+| Value size | 25 MiB |
+| Metadata size | 1,024 bytes |
+| Keys in a bulk `get` | 100 |
+| Keys in one `list` page | 1,000 |
+| Minimum expiry | 60 seconds |
+
+## When not to use KV
+
+KV isn't the right binding for the following needs:
+
+- **Counters and read-modify-write**: KV has no increment and no compare-and-swap. Two requests that each run `get`, add one, and `put` lose an update. Use a [Durable Object](/build/storage/durable-objects) or a D1 `UPDATE ... SET n = n + 1` statement.
+- **Queries across values**: use [D1](/build/storage/d1).
+- **Values in module variables**: read a value one time for each request. Don't keep it in a module variable across requests.
+- **Large files**: use [R2](/build/storage/r2).
+
+## Cache API responses in KV
+
+The following helper returns a cached value, or computes and stores it with an expiry:
+
+```js
+async function cached(env, key, ttlSeconds, compute) {
+  const hit = await env.CACHE.get(key, "json");
+  if (hit !== null) return hit;
+  const value = await compute();
+  await env.CACHE.put(key, JSON.stringify(value), { expirationTtl: Math.max(60, ttlSeconds) });
+  return value;
+}
+```
+
+The helper raises the expiry to at least 60 seconds, the KV minimum.
+
+## Differences from Cloudflare
+
+celld differs from Cloudflare KV in the following ways:
+
+- KV is strongly consistent. A read always sees the last write.
+- There is no edge cache, and the `cacheTtl` option has no effect.
+- Each namespace has one writer.
+- Deploy refuses keys other than `binding` and `id`, including `preview_id`.
+- The Cache API (`caches.default` and `caches.open`) always misses, so KV is the cache.

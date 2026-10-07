@@ -1,0 +1,124 @@
+---
+title: "Durable Object facets"
+sidebarTitle: "Facets"
+description: "Give each tenant or plugin a private database inside a Durable Object."
+---
+A facet is a child object inside a Durable Object, with its own SQLite database. The parent object, called the supervisor, starts the facet, and all calls to the facet go through the supervisor. The facet runs on the same node as the supervisor. Use facets to give each plugin or each sub-tenant a private database.
+
+If the children must scale across nodes, or if your Worker must call them directly, use separate Durable Objects instead. For more information, see [Durable Objects](/build/storage/durable-objects).
+
+## Configure
+
+Facets have no configuration of their own. You need the following bindings:
+
+- A Durable Object binding for the supervisor class, with a `new_sqlite_classes` migration.
+- A Worker Loader binding, if the facet runs loaded code. For more information, see [Dynamic Workers](/build/advanced/dynamic-workers).
+
+```json wrangler.json
+{
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "durable_objects": {
+    "bindings": [{ "name": "SUPERVISOR", "class_name": "Supervisor" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Supervisor"] }]
+}
+```
+
+## Start and call a facet
+
+In the supervisor, get a facet by name from `this.ctx.facets`, and call its methods:
+
+```js
+const stub = this.ctx.facets.get(FACET_NAME, () => ({ class: FACET_CLASS, id: FACET_ID }));
+await stub.someMethod(arg); // RPC, or stub.fetch(request)
+```
+
+Replace the following:
+
+- `FACET_NAME`: the name of the facet.
+- `FACET_CLASS`: the class that the facet runs.
+- `FACET_ID`: optional. The value of `ctx.id` inside the facet. If you omit `id`, then the facet gets the ID of the supervisor.
+
+The name selects the database. The same name always opens the same data, even with a different class or `id`. A name has a maximum of 256 bytes.
+
+The callback runs only if the facet isn't running. It returns an object with a `class` field and an optional `id` field. The class comes from one of the following sources:
+
+- Loaded code: `worker.getDurableObjectClass("NAME")`.
+- An exported class of your App with no migration: `this.ctx.exports.CLASS_NAME`. To pass startup data, call `this.ctx.exports.CLASS_NAME({ props })`. The facet reads the data from `this.ctx.props`.
+
+A class that appears in `new_sqlite_classes` can't be a facet class.
+
+You can't `await` the stub itself, and you can't chain calls. Call one method at a time.
+
+## Stop or delete a facet
+
+The supervisor can stop a facet or delete it:
+
+```js
+this.ctx.facets.abort(FACET_NAME, reason); // Stops the facet and keeps its database.
+this.ctx.facets.delete(FACET_NAME);        // Stops the facet and deletes its database and its child facets.
+```
+
+<Warning>
+`this.ctx.facets.delete` deletes the database of the facet and of all its child facets. Because the name selects the database, a later `get` with the same name opens an empty database.
+</Warning>
+
+## Example: a private database for each plugin
+
+The following supervisor loads plugin code with no network access and a CPU limit, and runs each plugin in its own facet:
+
+```js index.js
+import { DurableObject } from "cloudflare:workers";
+
+export class Supervisor extends DurableObject {
+  async run(pluginId, version, source, input) {
+    const worker = this.env.LOADER.get(`plugin-${pluginId}-v${version}`, () => ({
+      compatibilityDate: "2026-09-17",
+      mainModule: "plugin.js",
+      modules: { "plugin.js": source },
+      globalOutbound: null,
+      limits: { cpuMs: 100 },
+    }));
+    const plugin = this.ctx.facets.get(`plugin:${pluginId}`, () => ({
+      class: worker.getDurableObjectClass("Plugin"),
+    }));
+    try {
+      return { ok: true, result: await plugin.handle(input) };
+    } catch (err) {
+      return { ok: false, error: String(err?.message ?? err) };
+    }
+  }
+
+  async uninstall(pluginId) {
+    this.ctx.facets.delete(`plugin:${pluginId}`);
+  }
+}
+```
+
+## Rules for facets
+
+Keep the following rules in mind when you design with facets:
+
+- The supervisor can't limit what a facet writes. Loaded code in a facet writes to its database directly. If you must enforce a storage quota, don't use a facet. Keep the state in the supervisor and pass it to the code as data, or give the code a capability that checks each write. For more information, see [Give the code capabilities](/build/advanced/dynamic-workers#give-the-code-capabilities).
+- A facet can't set an alarm. A call to `setAlarm()` in a facet throws. Keep the schedule in the supervisor.
+- Writes aren't atomic across databases. A rollback in the supervisor doesn't undo a facet call. Keep data that must commit together in one database.
+- Do checks, quotas, and rate limits in the supervisor before the call.
+- Facets stop when the root object stops or moves, and start again at the next call. Their data is durable, but their memory isn't.
+- There's no API to list facets. Keep a table of facet names in the supervisor.
+
+## Limits
+
+The following table lists the limits of facets:
+
+| Item | Limit |
+|---|---|
+| Facet name | 256 bytes |
+| Nesting depth, including the root object | Four |
+
+## Differences from Cloudflare
+
+Keep the following celld behavior in mind when you port facet code from Cloudflare:
+
+- `clone()` isn't available.
+- A facet can't set an alarm.
+- A class in `new_sqlite_classes` can't be a facet class.

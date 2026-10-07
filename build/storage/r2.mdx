@@ -1,0 +1,145 @@
+---
+title: "R2"
+description: "Store, upload, and serve files and blobs."
+---
+R2 stores objects (files) by key, with HTTP metadata, custom metadata, range reads, and multipart uploads. Use it for uploads, images, exports, generated files, and backups. Files that ship with your code belong in [static assets](/build/static-assets) instead.
+
+celld, the judt runtime, implements the Cloudflare R2 binding API. It has no presigned URLs, no public bucket URL, and no S3 endpoint, so your Worker handles every upload and download.
+
+## Configure the binding
+
+To add a bucket, declare it in the `wrangler.json` file:
+
+```json wrangler.json
+{ "r2_buckets": [{ "binding": "FILES", "bucket_name": "files" }] }
+```
+
+The configuration follows these rules:
+
+- The `binding` and `bucket_name` keys are required.
+- You don't provision the bucket. celld creates it on first use.
+- Deploy refuses every key other than `binding` and `bucket_name`, including `jurisdiction` and `preview_bucket_name`.
+
+<Warning>
+Don't change the `bucket_name` value after data exists. A different name opens an empty bucket, and the objects stay under the old name.
+</Warning>
+
+## All bytes go through the Worker
+
+The Worker receives each upload and sends each download. This design has the following consequences:
+
+- Your Worker does all authorization. Before a download, confirm that the user owns the key.
+- You must stream all bodies. The isolate heap is 128 MB, so don't read a large file into memory with `await request.arrayBuffer()`.
+- For browser uploads, send the file as the raw request body, for example `fetch(url, { method: "PUT", body: file })`. The `request.formData()` method keeps the full file in memory.
+
+## Upload a file
+
+The following handler streams the request body into R2. The `json` function is a small helper that returns a JSON response.
+
+```js index.js
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+// PUT /files/:name (the body is the raw file)
+async function upload(request, env, user, name) {
+  const size = Number(request.headers.get("content-length") ?? 0);
+  if (!size || size > 50 * 1024 * 1024) return json({ error: "size" }, 413);
+  const key = `users/${user.id}/${crypto.randomUUID()}`;
+  const object = await env.FILES.put(key, request.body, {
+    httpMetadata: { contentType: request.headers.get("content-type") ?? "application/octet-stream" },
+    customMetadata: { owner: user.id, name },
+  });
+  return json({ key, size: object.size, etag: object.etag }, 201);
+}
+```
+
+Follow these rules when you upload:
+
+- Pass `request.body` directly to the `put` method.
+- A streamed body has no known length. Check the size with the `content-length` header, or count the bytes in a `TransformStream`.
+- A streamed body of 8 MiB or more becomes a multipart upload automatically.
+- Generate keys on the server. Don't use a key from the client.
+- Set `httpMetadata.contentType` on each `put` call. To make the browser download the file instead of displaying it, also set `contentDisposition`, for example `'attachment; filename="report.csv"'`.
+
+## Download a file
+
+The following handler serves an object, with support for range requests and conditional requests:
+
+```js index.js
+// GET /files/:key
+async function download(request, env, key) {
+  const object = await env.FILES.get(key, { range: request.headers, onlyIf: request.headers });
+  if (object === null) return new Response("not found", { status: 404 });
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  if (!("body" in object)) return new Response(null, { status: 304, headers }); // precondition failed
+  if (object.range) {
+    headers.set("content-range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`);
+  }
+  return new Response(object.body, { status: object.range ? 206 : 200, headers });
+}
+```
+
+## R2 API
+
+The following table summarizes the methods of an R2 binding:
+
+| Method | Notes |
+|---|---|
+| `get(key, { range, onlyIf })` | Returns an `R2ObjectBody` (with `.body`, `.text()`, `.json()`, and `.arrayBuffer()`), or `null`. The `range` option is `{ offset, length }`, `{ suffix }`, or a `Headers` object with a `Range` header. Both options are optional. |
+| `put(key, value, { httpMetadata, customMetadata, onlyIf, sha256 })` | The value is a string, `ArrayBuffer`, typed array, `Blob`, or `ReadableStream`. Returns `null` if the `onlyIf` condition fails. All options are optional. |
+| `head(key)` | Returns the metadata only, or `null`. |
+| `delete(keys)` | Deletes a maximum of 1,000 keys in each call. |
+| `list({ prefix, delimiter, cursor, startAfter, limit, include })` | Returns a maximum of 1,000 objects for each page. Continue while `truncated` is `true`. All options are optional. |
+| `createMultipartUpload(key)` | Starts a multipart upload. On the returned upload object, call `uploadPart(n, body)` for each part, and then `complete(parts)` or `abort()`. |
+
+An `R2Object` has the `key`, `size`, `etag`, `httpEtag`, `uploaded`, `httpMetadata`, `customMetadata`, and `range` properties. The `version` property is the same as the `etag` property.
+
+Conditional calls work.
+
+## Keys
+
+Object keys follow these rules:
+
+- A key is 1 to 1,024 bytes long.
+- The namespace is flat. `a/b`, `/a/b`, `a//b`, and `a/b/` are four different keys.
+- Use ASCII keys. The `list` method sorts keys that contain non-ASCII or special characters in a different order from Cloudflare.
+- To query files by owner, name, or date, keep an index in [D1](/build/storage/d1).
+
+## Share a file with a link
+
+R2 on celld has no presigned URLs. To share a file, generate a random token, and store the mapping from the token to the object key in [KV](/build/storage/kv) with an expiry. Then serve the file from a Worker route.
+
+The following example assumes a KV binding named `LINKS` next to the `FILES` bucket:
+
+```js index.js
+// Create a link that expires after one day
+async function createShareLink(env, key) {
+  const token = crypto.randomUUID();
+  await env.LINKS.put(token, key, { expirationTtl: 86400 });
+  return `/s/${token}`;
+}
+
+// GET /s/:token
+async function serveShareLink(env, token) {
+  const key = await env.LINKS.get(token);
+  if (key === null) return new Response("not found", { status: 404 });
+  const object = await env.FILES.get(key);
+  if (object === null) return new Response("not found", { status: 404 });
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  return new Response(object.body, { headers });
+}
+```
+
+## Differences from Cloudflare
+
+celld differs from Cloudflare R2 in the following ways:
+
+- Presigned URLs, public buckets, the S3 API, event notifications, the `ssecKey` option, and lifecycle rules aren't available.
+- Deploy refuses the `jurisdiction` and `preview_bucket_name` keys.
+- A multipart upload must finish on the node and process that started it.
+- celld refuses a conditional `put` of a streamed body over 8 MiB.
+- The `list` method sorts keys with non-ASCII or special characters in a different order.
+- The `version` property of an object is the same as its `etag`.

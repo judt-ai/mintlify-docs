@@ -1,0 +1,112 @@
+---
+title: "npm packages and builds"
+description: "Add npm dependencies, and add a build step for TypeScript, JSX, or a frontend bundler."
+---
+An App can use npm packages and a build step. At deploy, judt installs the dependencies from the `package-lock.json` file, runs the `build` script if there is one, and then celld, the judt runtime, bundles the entry module with esbuild. The dev server prepares the App the same way. Use this page to add a dependency, add TypeScript or JSX, or deploy the output of a frontend bundler.
+
+## Add an npm package
+
+In the sandbox, add the package with npm:
+
+```bash
+npm install hono
+```
+
+Then commit the `package.json` and `package-lock.json` files. Deploy installs from the lockfile.
+
+We recommend packages that run on web APIs. celld supports only a subset of the Node.js built-in modules, so a package that depends on others fails when it calls them. For more information, see [Runtime reference](/build/reference/runtime).
+
+### Dependency rules
+
+judt installs dependencies only from the public npm registry, and install scripts never run. A package that needs a `postinstall` step or a native binary doesn't work.
+
+Deploy checks the `dependencies`, `devDependencies`, and `optionalDependencies` fields of the `package.json` file, and refuses a source with the `unsupported_dependencies` code if it has any of the following:
+
+- A Git, file, URL, or GitHub (`user/repo`) dependency. A version range, a tag, and an `npm:` alias are accepted.
+- A `workspaces` field.
+- A linked package, or a package that the lockfile resolves from a host other than the public npm registry.
+- An `.npmrc` file.
+
+If the `package.json` file declares any dependencies, then the App must include a `package-lock.json` file with `lockfileVersion` 2 or 3. Otherwise, deploy refuses the source with the `lockfile_missing` code. To create or update the lockfile, run `npm install` again.
+
+## How deploy bundles your code
+
+At deploy, esbuild bundles the file that `main` names, its relative imports, and the packages that it imports from `node_modules`. Write JavaScript ES modules, and import your own modules with relative paths, such as `./src/db.js`.
+
+## Add a build step
+
+For TypeScript, JSX, or a frontend bundler, add a `build` script to the `package.json` file. The script writes JavaScript to the `dist/` directory. Then set `main` to the entry module that the build writes, such as `dist/index.js`.
+
+The following example compiles TypeScript with `tsc`. The `tsconfig.json` file, which isn't shown, compiles `src/index.ts` to `dist/index.js`.
+
+<CodeGroup>
+
+```json package.json
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
+```
+
+```json wrangler.json
+{
+  "name": "app",
+  "main": "dist/index.js",
+  "compatibility_date": "2026-09-17"
+}
+```
+
+</CodeGroup>
+
+### How deploy runs the build
+
+At deploy, judt runs `npm ci`, and then `npm run build`. The build runs under the following conditions:
+
+- The build gets no Secrets.
+- The build has no network access except to the npm registry.
+- The install and the build together must finish within 5 minutes.
+- `pre` and `post` scripts, such as `prebuild`, don't run.
+- After the build, the entry module that `main` names must exist.
+- The build must not leave symbolic links, hard links, or special files. judt removes the `node_modules/.bin` directories before it checks.
+
+If the build fails, then deploy stops with one of the following codes:
+
+| Code | Cause |
+|---|---|
+| `dependency_install_failed` | `npm ci` failed. |
+| `build_failed` | The `build` script failed. |
+| `build_timeout` | The install and the build didn't finish within 5 minutes. |
+| `entrypoint_missing` | The file that `main` names doesn't exist after the build. |
+| `unsupported_build_output` | The build left a symbolic link, a hard link, or a special file. |
+
+### The build on the dev server
+
+When the dev server starts, it runs the `build` script one time. If the `package.json` file has a `dev` script, then the dev server runs it beside the dev server for as long as it runs. Use the `dev` script for a watcher that rebuilds on change, such as `tsc --watch` or `esbuild --watch`. For more information, see [Test on the dev server](/build/dev-server).
+
+### Keep build output out of the source
+
+Don't commit the `dist/` or `node_modules/` directory. The build creates them at deploy. Deploy refuses a source that contains either of them, with the `reserved_path` code. For more information, see [The App contract](/build/app-contract#reserved-paths).
+
+## Deploy bundled output
+
+If your build already bundles the Worker, as Vite does, then set `no_bundle` to `true`:
+
+```json wrangler.json
+{
+  "name": "app",
+  "main": "dist/index.js",
+  "no_bundle": true,
+  "compatibility_date": "2026-09-17"
+}
+```
+
+With `no_bundle`, celld uses the entry module byte for byte. It doesn't bundle the module or look for more JavaScript modules, so the entry module must already contain all of the Worker's code.
+
+If the build also writes the frontend files, then set `assets.directory` to the directory that holds them. For more information, see [Static assets](/build/static-assets).

@@ -1,0 +1,123 @@
+---
+title: "Static assets"
+description: "Serve HTML, CSS, browser JavaScript, icons, and fonts that ship with the code."
+---
+Static assets are files that ship with the App's code, such as HTML, CSS, browser JavaScript, icons, and fonts. celld, the judt runtime, serves them directly, without running the Worker. Assets are part of the deployed version, and code can't write to them. For files that the App creates or receives at runtime, use R2. For more information, see [R2](/build/storage/r2).
+
+## Configure
+
+Declare the assets directory with the `assets` key in the `wrangler.json` file:
+
+```json wrangler.json
+{
+  "main": "index.js",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+}
+```
+
+The following table lists the keys that `assets` accepts:
+
+| Key | Values | Default |
+|---|---|---|
+| `directory` | A path in the App, such as `public`. The path can't contain `..`. | None. Required. |
+| `binding` | The name for `env.ASSETS.fetch()`. | None |
+| `html_handling` | `auto-trailing-slash`, `force-trailing-slash`, `drop-trailing-slash`, or `none` | `auto-trailing-slash` |
+| `not_found_handling` | `single-page-application`, `404-page`, or `none` | `none` |
+| `run_worker_first` | `true`, or up to 100 patterns, such as `"/api/*"` and `"!/api/public/*"` | `false` |
+
+Deploy refuses any other key. Every judt App has a `main` entry module, so every App has a Worker beside its assets.
+
+All files in the assets directory are public. Don't put Worker source or credentials there. Asset files can be of any type, and the App's source limits apply to them: 1 MiB for each file, and 32 MiB and 2,048 files and directories in total. For more information, see [The App contract](/build/app-contract#source-limits).
+
+## How celld routes a request
+
+celld decides whether an asset or the Worker answers each request. It applies the following rules in order, and the first rule that matches decides:
+
+1. A request with a method other than `GET` or `HEAD` goes to the Worker.
+1. A request whose path matches `run_worker_first` goes to the Worker.
+1. The rules in the `_redirects` file apply in file order. The first rule that matches wins.
+1. `html_handling` finds the file. For example, `/about` serves `/about.html`, and `/about/` serves `/about/index.html`. A request for a different spelling of the path gets a `307` redirect.
+1. If no file matches and the request is a browser navigation, then `not_found_handling` applies. `single-page-application` returns `/index.html` with status `200`. `404-page` returns the nearest `404.html` file with status `404`.
+1. All other requests go to the Worker.
+
+### Serve a single-page app with an API
+
+To serve a single-page app beside an API, do the following:
+
+- Set `"run_worker_first": ["/api/*"]`, so that API requests never get an asset or the single-page app's HTML.
+- Return a JSON `404` response from the Worker for unknown API routes.
+- Don't write Worker routes for files that exist. The Worker doesn't see requests for them.
+
+## Serve assets from the Worker
+
+`env.ASSETS.fetch()` takes a request or a URL and returns the asset. It accepts only `GET` and `HEAD` requests, and it applies `not_found_handling`. Use it to put a check in front of a set of files:
+
+```js index.js
+if (url.pathname.startsWith("/admin")) {
+  if (!(await isAdmin(request, env))) return Response.redirect(new URL("/login", url), 302);
+  return env.ASSETS.fetch(new URL("/admin/index.html", url));
+}
+```
+
+<Warning>
+Add `"/admin/*"` to `run_worker_first`. If you don't, celld serves the `admin/index.html` file to every user, and the check in the Worker never runs.
+</Warning>
+
+To add data to a page, transform the asset response with `HTMLRewriter`. If you put JSON into a `<script>` element, escape each `<` character in the JSON.
+
+## Set headers and redirects
+
+To set response headers or redirects for assets, add a `_headers` or `_redirects` file at the top of the assets directory. Each file has a limit of 100 KiB. celld reads these files but doesn't serve them.
+
+```text public/_headers
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/*
+  X-Content-Type-Options: nosniff
+```
+
+```text public/_redirects
+/home   /           301
+/blog/* /index.html 200
+```
+
+The files follow these rules:
+
+- A redirect status is `301`, `302`, `303`, `307`, or `308`. Status `200` is an internal rewrite.
+- The `_headers` file can't set `connection`, `content-length`, or `transfer-encoding`.
+
+## Caching
+
+celld handles caching for assets as follows:
+
+- The `ETag` header is the SHA-256 hash of the body, and a request with a matching `If-None-Match` header gets a `304` response. There's no `Last-Modified` header.
+- The default `Cache-Control` header is `public, max-age=0, must-revalidate`, so browsers check for a change on each request.
+- Range requests work and return `206`.
+- There's no compression and no CDN, so keep files small.
+
+For files that have a hash or a version in the name, set a long `immutable` cache in the `_headers` file. Keep HTML on the default, so that visitors see a deploy at once.
+
+## Unsupported files
+
+Deploy refuses an assets directory that has any of the following:
+
+- An `.assetsignore` file at the top of the directory
+- A `_worker.js` file or directory at the top of the directory
+- Symbolic links
+- File names that aren't UTF-8
+
+## Build a frontend without a build step
+
+We recommend code that browsers run directly. It needs no build, and the dev server serves each change at once. The following techniques work without a build:
+
+- HTML and modern CSS, such as custom properties, grid, nesting, and `:has()`.
+- Browser ES modules, such as `<script type="module" src="/app.js">`, with relative imports.
+- Web components (`customElements.define`) or a small template function for views.
+- A library from a CDN, loaded with an import map. Use exact versions. The App then depends on the CDN.
+
+To bundle a frontend from npm packages instead, such as with Vite, JSX, or TypeScript, add a `build` script that writes the assets and the Worker's entry module to `dist/`. Then point `assets.directory` and `main` into `dist/`. For more information, see [npm packages and builds](/build/npm-and-builds).

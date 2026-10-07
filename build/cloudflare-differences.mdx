@@ -1,0 +1,85 @@
+---
+title: "Differences from Cloudflare Workers"
+sidebarTitle: "Differences from Cloudflare"
+description: "What celld supports, what it doesn't, and the Workers behaviors that differ on judt."
+---
+A judt App is one Worker in the style of Cloudflare Workers. It runs on celld, the judt runtime. Most of what you know about Workers applies to judt Apps. This page summarizes where celld differs, so that you can find the changes that matter before you port code or reach for a familiar feature. Each item links to the page that covers it in full.
+
+If this documentation and the Cloudflare documentation disagree, follow this documentation.
+
+## What celld is
+
+celld is a separate runtime. It embeds V8 and implements the Workers runtime API. It isn't workerd, Node.js, or a browser. celld runs your App in the sandbox as a dev server, and in production after a deploy.
+
+Write standard web-platform JavaScript: `fetch`, `Request`, `Response`, streams, `URL`, and Web Crypto. Use the bindings that you declare in the `wrangler.json` file. A subset of Node.js built-in modules works without the `nodejs_compat` flag. For more information, see [Runtime reference](/build/reference/runtime).
+
+## Unsupported products and features
+
+celld doesn't provide Vectorize, Hyperdrive, Browser Rendering, or Email Workers, so the entry module can't export an `email` handler. The following table lists the other unsupported features and what to do instead.
+
+| Feature | What to do instead |
+|---|---|
+| Workers AI | Call the model provider's HTTP API with `fetch`, and keep the API key in a Secret. For more information, see [Build an AI agent loop](/build/advanced/agent-loop). |
+| `tail` handlers | The entry module can't export a `tail` handler. To collect the logs of code that you load at runtime, give the loaded code a tail. For more information, see [Dynamic Workers](/build/advanced/dynamic-workers). |
+| Python Workers | Write JavaScript ES modules. For TypeScript, add a build step. For more information, see [npm packages and builds](/build/npm-and-builds). |
+| `BroadcastChannel` | The constructor throws an error. Don't use the class. |
+| Durable Object bindings to other scripts | Declare and export every Durable Object class in your own App. Deploy refuses `script_name`. |
+| Durable Object class renames and deletes | Keep each class name, and keep an unused class exported. Deploy refuses `renamed_classes`, `deleted_classes`, and `transferred_classes`. For more information, see [Durable Objects](/build/storage/durable-objects). |
+
+## Behavior differences
+
+The following differences are the ones that most often surprise developers who know Workers.
+
+### The Cache API always misses
+
+`caches.default` and `caches.open` exist, but every lookup misses and `put` stores nothing. The `cache` option of `fetch` isn't available. To cache a value, store it in KV with an `expirationTtl`. For more information, see [Web API differences](/build/reference/runtime#web-api-differences).
+
+### KV is strongly consistent
+
+On celld, one owner serves each KV namespace, so a `get` always returns the last `put` from every node. Cloudflare guidance about stale reads doesn't apply. There's no edge cache, and the `cacheTtl` option has no effect. KV still has no atomic increment and no compare-and-swap, so use a Durable Object or D1 for counters. For more information, see [KV](/build/storage/kv).
+
+### R2 has no presigned URLs, public buckets, or S3 API
+
+Every upload and download goes through your Worker, which handles authorization and streams the body. To share a file, create a random token, store the token-to-key mapping in KV with an expiry, and serve the file from a Worker route. R2 event notifications, `ssecKey`, lifecycle rules, and `jurisdiction` aren't available. For more information, see [R2](/build/storage/r2).
+
+### D1 has no read replicas, Time Travel, or SQL transactions
+
+Every D1 query goes to the primary database, so each read sees all committed writes. The `withSession()` method always uses the primary. The `dump()` method throws, and there's no Time Travel and no REST API. Application SQL can't use `BEGIN`, `COMMIT`, `ROLLBACK`, or `SAVEPOINT`. To run statements in one transaction, use `batch()`. The dev server doesn't apply migrations. For more information, see [D1](/build/storage/d1).
+
+### The `request.cf` object has no location data
+
+The `request.cf` object has no geolocation and no colo data. celld also removes the `Content-Length` header from Worker responses, except for responses to `HEAD` requests. For more information, see [Web API differences](/build/reference/runtime#web-api-differences).
+
+### Clocks advance only at I/O
+
+`Date.now()` and `performance.now()` move forward only when your code does I/O. A loop that only uses the CPU measures 0&nbsp;ms. For more information, see [Web API differences](/build/reference/runtime#web-api-differences).
+
+### The `wrangler.json` file accepts few keys
+
+The `wrangler.json` file accepts only `name`, `main`, `no_bundle`, `compatibility_date`, `compatibility_flags`, `vars`, and the binding keys that the feature pages document. Deploy refuses every other key, for example `routes`, `env`, `observability`, `ai`, and `build`. To run a build, add a `build` script to the `package.json` file. For more information, see [Configure wrangler.json](/build/wrangler-json).
+
+### celld creates bindings on first use
+
+You don't provision D1 databases, KV namespaces, R2 buckets, or queues. celld creates each one the first time that your code uses it. A typo in `database_name`, a KV `id`, or `bucket_name` therefore gives you a new, empty store, and the old data stays under the old name. For more information, see [Configure wrangler.json](/build/wrangler-json).
+
+<Warning>
+Don't change the App `name`, a Durable Object class name, a D1 `database_name` or `database_id`, a KV `id`, or a `bucket_name` after data exists. The new name points to new, empty storage, and your code can no longer reach the old data.
+</Warning>
+
+### Most compatibility flags have no effect
+
+celld obeys a short list of compatibility flags and accepts all other flags without effect. Node.js built-in modules are always on. For more information, see [Compatibility flags](/build/reference/runtime#compatibility-flags).
+
+## Other differences by product
+
+The following table lists the remaining differences for each product. The linked page covers each one.
+
+| Product | Differences on celld |
+|---|---|
+| [Durable Objects](/build/storage/durable-objects) | Each class needs a `new_sqlite_classes` migration, and deploy refuses `new_classes`. One object accepts 64 concurrent requests, and then returns `503`. Jurisdiction APIs throw. There's no API to list objects. A WebSocket closes with code `1012` when its object moves to a different node, for example at a deploy. |
+| [Queues](/build/background/queues) | celld adds no backoff to retries. Each queue has one consumer. Retention is four days. Pull consumers, the HTTP API, consumers in other scripts, and R2 event notifications aren't available. |
+| [Cron Triggers](/build/background/cron-triggers) | After downtime, only the last missed occurrence runs. Runs of one App don't overlap. On the dev server, you can't start a cron manually. |
+| [Workflows](/build/background/workflows) | There's no REST API or CLI for instances. celld keeps finished instances for 30 days. Deploy refuses `schedules`, `limits`, and `script_name`. |
+| [Static assets](/build/static-assets) | celld serves assets with no compression and no CDN. Deploy refuses an `.assetsignore` or `_worker.js` file at the top of the assets directory, and symbolic links. Every App has a Worker, so assets-only Apps aren't possible. |
+| [Dynamic Workers](/build/advanced/dynamic-workers) | `console.log` in loaded code doesn't reach the App logs. One process holds a maximum of 256 live Dynamic Workers. Deploy refuses `limits` and `tails` in the `worker_loaders` entry, and `allowExperimental` in the loaded code. |
+| [Durable Object facets](/build/advanced/facets) | `setAlarm()` throws in a facet. `clone()` isn't available. There's no API to list facets. |

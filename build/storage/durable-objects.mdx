@@ -1,0 +1,266 @@
+---
+title: "Durable Objects"
+description: "Keep ordered, coordinated state for one entity, with SQLite storage, alarms, and WebSockets."
+---
+A Durable Object is a single-threaded actor with its own SQLite database. Each object name maps to exactly one instance, and one node serves that instance at a time. Use a Durable Object for state that has one owner and needs ordering, coordination, or WebSockets. Examples are a chat room, a document, a game, a cart, a rate limit, and an agent session.
+
+To query relational data across many entities, use [D1](/build/storage/d1) instead. An App can use both.
+
+celld, the judt runtime, implements the Cloudflare Durable Objects API with SQLite storage. Most Cloudflare knowledge applies. This page states each place where celld is different.
+
+## Configure the binding
+
+To add a Durable Object class, declare a binding and a migration for the class in the `wrangler.json` file:
+
+```json wrangler.json
+{
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+}
+```
+
+The configuration follows these rules:
+
+- Each class needs a `new_sqlite_classes` migration before its first deploy.
+- To add another class, append an entry with a tag that you haven't used before, for example `{ "tag": "v2", "new_sqlite_classes": ["Presence"] }`. Don't change or remove earlier entries.
+- A binding has only the `name` and `class_name` keys. The `name` value is the `env.NAME` property in your code.
+- You must export each class that the configuration names from the `index.js` file.
+- Deploy refuses the `script_name`, `new_classes`, `renamed_classes`, `deleted_classes`, and `transferred_classes` keys.
+
+<Warning>
+Don't rename a Durable Object class or change the App `name` after the first deploy. Object IDs come from the App name and the class name. A rename sends every call to empty objects, and the data stays under the old IDs. If a class becomes unused, keep it exported.
+</Warning>
+
+## Address an object
+
+You reach an object through a stub. The following example shows each way to get a stub:
+
+```js
+const stub = env.ROOMS.getByName(roomName);                // the usual method
+
+const id = env.ROOMS.idFromName(roomName);                 // the two-step method
+const sameStub = env.ROOMS.get(id);
+
+const fresh = env.ROOMS.newUniqueId();                     // save fresh.toString() to find it again
+const again = env.ROOMS.get(env.ROOMS.idFromString(savedHex));
+```
+
+Keep the following behavior in mind when you address objects:
+
+- A stub creates nothing. The object starts at the first call.
+- Inside the object, `ctx.id.name` returns the object's name.
+- There is no API to list objects. If you need an index of objects, keep one in D1.
+- One object accepts a maximum of 64 concurrent requests, and then returns `503`. Don't send all traffic to one global object. Use one object for each room, user, or document. To spread hot data, shard it across several objects (for example, `counter-${hash % 16}`), or use D1.
+
+## Write the class
+
+The following class stores chat messages in SQLite and exposes two RPC methods:
+
+```js index.js
+import { DurableObject } from "cloudflare:workers";
+
+export class Room extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT NOT NULL, body TEXT NOT NULL, sent_at INTEGER NOT NULL)`);
+  }
+
+  // RPC: await env.ROOMS.getByName(name).post(author, body)
+  async post(author, body) {
+    return this.sql.exec("INSERT INTO messages (author, body, sent_at) VALUES (?, ?, ?) RETURNING id, sent_at",
+      author, body, Date.now()).one();
+  }
+
+  async recent(limit = 50) {
+    return this.sql.exec("SELECT * FROM messages ORDER BY id DESC LIMIT ?", limit).toArray().reverse();
+  }
+}
+```
+
+Follow these rules when you write a class:
+
+- Extend the `DurableObject` class from `cloudflare:workers`. RPC requires it, unless you set the `js_rpc` compatibility flag.
+- Use RPC methods for calls. Implement the `fetch` method only for WebSockets or a full HTTP proxy.
+- RPC arguments and return values must be structured-cloneable. Class instances with methods aren't.
+- The constructor runs at each activation. Keep it fast and idempotent.
+- Treat fields on `this` as a cache only. celld evicts idle objects and moves objects between nodes, so keep all state in `ctx.storage`.
+- You don't need `ctx.waitUntil` in an object. Pending I/O stays alive after the handler returns.
+
+### Writes and responses
+
+You don't need to `await` a write before you return a response. The output gate holds the response until all writes are durable.
+
+Before an external side effect that depends on a write, call `await this.ctx.storage.sync()`. For example, if you record a "running" mark and then call a payment API, sync the mark first. Without `sync()`, a crash can lose a write that came before an outbound `fetch`.
+
+## Store data
+
+Each object has one SQLite database. You can use it through SQL or through a key-value API, and both share the same database.
+
+### Query with SQL
+
+The `ctx.storage.sql.exec(sql, ...bindings)` method is synchronous and returns a cursor. Read the cursor with `.toArray()`, `.one()`, `.next()`, `.raw()`, or a `for...of` loop.
+
+Read each write cursor to its end. An open `INSERT ... RETURNING` cursor holds uncommitted writes, and celld then refuses the response.
+
+Store bytes in BLOB columns. TEXT values must be valid UTF-8.
+
+To get the size of the database in bytes, read the `ctx.storage.sql.databaseSize` property.
+
+### Use the key-value API
+
+The key-value API stores values in the same database. The following methods are asynchronous:
+
+- `ctx.storage.get`
+- `ctx.storage.put`
+- `ctx.storage.delete`
+- `ctx.storage.list({ prefix, limit, reverse })`
+- `ctx.storage.deleteAll()`
+
+The synchronous versions are `ctx.storage.kv.get`, `ctx.storage.kv.put`, `ctx.storage.kv.delete`, and `ctx.storage.kv.list`.
+
+### Make writes atomic
+
+To make several writes atomic, wrap them in `ctx.storage.transactionSync(() => { ... })`. If the callback throws, then celld rolls back its writes. Transactions can nest.
+
+Don't write `BEGIN` or `COMMIT` statements.
+
+### Change the schema inside an object
+
+Each object has its own database, so the `migrations/` directory doesn't apply to Durable Objects. Instead, keep a schema version in the object and apply pending changes in the constructor:
+
+```js index.js
+import { DurableObject } from "cloudflare:workers";
+
+const MIGRATIONS = [
+  "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT NOT NULL, body TEXT NOT NULL, sent_at INTEGER NOT NULL)",
+  "ALTER TABLE messages ADD COLUMN edited_at INTEGER",
+];
+
+export class Room extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    ctx.storage.transactionSync(() => {
+      const version = ctx.storage.kv.get("schema_version") ?? 0;
+      for (let i = version; i < MIGRATIONS.length; i++) ctx.storage.sql.exec(MIGRATIONS[i]);
+      ctx.storage.kv.put("schema_version", MIGRATIONS.length);
+    });
+  }
+}
+```
+
+Only append to the `MIGRATIONS` array, and make each change additive. An object runs the updated code at its next activation.
+
+To stop other events while setup runs, use `ctx.blockConcurrencyWhile(async () => { ... })`. The callback has a 30-second limit. Use it only for setup.
+
+## Set an alarm
+
+Each object has one alarm. Use it for timers that belong to one object and for background work in steps.
+
+```js
+async touch() {
+  if ((await this.ctx.storage.getAlarm()) === null) {
+    await this.ctx.storage.setAlarm(Date.now() + 600_000);
+  }
+}
+
+async alarm({ retryCount, isRetry }) {
+  this.ctx.storage.sql.exec("DELETE FROM messages WHERE sent_at < ?", Date.now() - 86_400_000);
+}
+```
+
+The alarm API works as follows:
+
+- `setAlarm(ms)` replaces the current alarm.
+- `getAlarm()` returns the scheduled time, or `null`.
+- `deleteAlarm()` cancels the alarm. `deleteAll()` also deletes the alarm.
+- The alarm is durable before the object sends its response.
+- If the `alarm` handler throws, then celld runs it again with backoff. The `retryCount` and `isRetry` arguments report the retry. Make the `alarm` handler idempotent.
+
+To run many timers from one object, keep a table of due times and set the alarm to the earliest one. In the `alarm` handler, do all work that is due, and then set the alarm to the next due time.
+
+## Handle WebSockets with hibernation
+
+A Durable Object can accept WebSockets and hibernate while they're idle. The Worker checks for an upgrade request and forwards it to the object:
+
+```js index.js
+export default {
+  async fetch(request, env) {
+    const name = new URL(request.url).searchParams.get("room") ?? "lobby";
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("expected websocket", { status: 426 });
+    }
+    return env.ROOMS.getByName(name).fetch(request);
+  },
+};
+```
+
+The object accepts the socket and handles its events. The following methods extend the `Room` class from [Write the class](#write-the-class):
+
+```js index.js
+async fetch(request) {
+  const { 0: client, 1: server } = new WebSocketPair();
+  this.ctx.acceptWebSocket(server, ["member"]);
+  server.serializeAttachment({ user: new URL(request.url).searchParams.get("user") ?? "anon" });
+  server.send(JSON.stringify({ type: "history", messages: await this.recent() }));
+  return new Response(null, { status: 101, webSocket: client });
+}
+
+async webSocketMessage(ws, message) {
+  const { user } = ws.deserializeAttachment();
+  const saved = await this.post(user, JSON.parse(message).body);
+  for (const peer of this.ctx.getWebSockets()) {
+    peer.send(JSON.stringify({ type: "message", user, ...saved }));
+  }
+}
+
+async webSocketClose(ws, code, reason) {
+  ws.close(code, reason);
+}
+```
+
+Follow these rules for WebSockets:
+
+- Accept sockets with `this.ctx.acceptWebSocket(server)`. Don't call `server.accept()`, because that socket doesn't hibernate and closes when the event ends.
+- Get the open sockets with `this.ctx.getWebSockets(tag)`. The `tag` argument is optional. Don't keep sockets in a `Set`.
+- Keep small per-socket state with the `serializeAttachment` and `deserializeAttachment` methods.
+- To answer heartbeats without waking the object, call `this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"))`.
+- Message handlers start in arrival order, but they don't wait for each other. If order matters, write to SQL before the first `await`.
+- Keep frames small. Each isolate has a 1 MiB input queue.
+
+A socket closes with code `1012` when the object moves to a different node, for example during a deploy. Make the client reconnect with backoff and load the history again.
+
+## Call an object from the Worker
+
+When you call RPC methods from the Worker, handle these cases:
+
+- An error thrown in an RPC method rejects the promise in the caller. Catch the error and return a `4xx` or `5xx` response.
+- celld retries an RPC call only if the method didn't start. Make methods idempotent, or accept a request ID from the client.
+- You can't send RPC stubs between isolates. Return data instead.
+
+## Limits
+
+The following table lists the limits for Durable Objects on celld:
+
+| Item | Limit |
+|---|---|
+| Concurrent requests into one object | 64, then `503` |
+| `blockConcurrencyWhile` callback | 30 seconds |
+| Storage transaction | 30 seconds |
+| Alarms for each object | 1 |
+| WebSocket input queue for each isolate | 1 MiB |
+
+## Differences from Cloudflare
+
+celld differs from Cloudflare Durable Objects in the following ways:
+
+- Durable Object bindings to other scripts aren't available. Deploy refuses the `script_name` key.
+- You can't rename, delete, or transfer classes. Deploy refuses `new_classes`, `renamed_classes`, `deleted_classes`, and `transferred_classes`. Use `new_sqlite_classes` for every class.
+- Jurisdiction APIs throw.
+- One object accepts a maximum of 64 concurrent requests, and then returns `503`.
+- An open write cursor makes celld refuse the response.
+- A write that comes before an outbound `fetch` can be lost in a crash unless you call `ctx.storage.sync()` first.
+- A hibernating WebSocket closes with code `1012` when the object moves to a different node.
+- RPC stubs can't cross isolates, and celld retries an RPC call only if the method didn't start.
+- Don't use `AbortSignal.timeout()` in a Durable Object. Its timer stays after the `fetch` ends and keeps the event open, so the next alarm waits for the timer. For more information, see [Runtime reference](/build/reference/runtime).
