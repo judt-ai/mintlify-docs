@@ -1,0 +1,86 @@
+---
+title: "Build Apps"
+sidebarTitle: "Introduction"
+description: "Write the code that runs inside a judt App: a Workers-style JavaScript app on celld, the judt runtime."
+---
+A judt App is one Worker in the style of Cloudflare Workers. celld, the judt runtime, runs the App on V8 isolates. It runs the App in the App's sandbox as a dev server while you build, and in production after you deploy. The pages in this tab explain how to write the code that runs inside an App.
+
+To create, deploy, and publish Apps, and to manage their sandboxes, Secrets, and access, see [Manage Apps](/manage/introduction).
+
+## The runtime
+
+celld embeds V8 and implements the Cloudflare Workers runtime APIs. It's a WinterCG web runtime, not workerd, Node.js, or a browser. Write standard web-platform JavaScript, such as `fetch`, `Request`, `Response`, streams, `URL`, and Web Crypto. Reach storage and background work through the bindings that you declare in the `wrangler.json` file.
+
+Most of what you know about Cloudflare Workers applies. Where celld differs, the page for each feature says so and says what to do instead. If this documentation and your knowledge of Cloudflare disagree, follow this documentation. For a summary of the differences, see [Differences from Cloudflare Workers](/build/cloudflare-differences).
+
+## A minimal App
+
+The smallest App is a `wrangler.json` file and an entry module that exports a `fetch` handler:
+
+<CodeGroup>
+
+```json wrangler.json
+{
+  "name": "app",
+  "main": "index.js",
+  "compatibility_date": "2026-09-17"
+}
+```
+
+```js index.js
+export default {
+  async fetch(request, env, ctx) {
+    return new Response("Hello from judt.", {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  },
+};
+```
+
+</CodeGroup>
+
+For the full list of files that an App can contain, see [The App contract](/build/app-contract).
+
+## Choose storage and background work
+
+Module-level variables aren't state. Each node runs its own isolates, and celld recycles isolates, so celld doesn't keep a value in a module variable. Keep all durable state in a binding. An App can use many bindings together.
+
+The following table lists what to use for each kind of need:
+
+| Need | Use |
+|---|---|
+| State for one thing, such as a room, document, cart, game, rate limit, or agent session, that needs order, coordination, or WebSockets | [Durable Objects](/build/storage/durable-objects) with SQLite |
+| Relational data that you query across many entities | [D1](/build/storage/d1) |
+| Values that you read by key, such as sessions, flags, and cached API responses with a TTL | [KV](/build/storage/kv). KV is strongly consistent on celld, and it has no atomic increment. |
+| Files and blobs | [R2](/build/storage/r2). There are no presigned URLs, so all bytes go through the Worker. |
+| HTML, CSS, browser JavaScript, icons, and fonts that ship with the code | [Static assets](/build/static-assets) |
+| Background work, fan-out, and retries | [Queues](/build/background/queues) |
+| Work on a schedule | [Cron Triggers](/build/background/cron-triggers) |
+| A timer for one object | A Durable Object alarm. For more information, see [Durable Objects](/build/storage/durable-objects). |
+| A process with many steps, sleeps, or waits for events | [Workflows](/build/background/workflows) |
+| Code that you didn't write at build time | [Dynamic Workers](/build/advanced/dynamic-workers) |
+| A private database for each tenant or plugin | [Durable Object facets](/build/advanced/facets) |
+| An AI agent that calls a model and tools in a loop | A Durable Object with alarms. For more information, see [Build an AI agent loop](/build/advanced/agent-loop). |
+
+## Explore the docs
+
+<CardGroup cols={2}>
+  <Card title="The App contract" href="/build/app-contract">
+    The files of an App, the source limits, and the rules that keep data attached to your code.
+  </Card>
+  <Card title="Test on the dev server" href="/build/dev-server">
+    Run and debug the App in its sandbox before you deploy.
+  </Card>
+  <Card title="Configure wrangler.json" href="/build/wrangler-json">
+    The configuration keys and bindings that judt accepts.
+  </Card>
+  <Card title="npm packages and builds" href="/build/npm-and-builds">
+    Add dependencies, TypeScript, JSX, or a frontend bundler.
+  </Card>
+  <Card title="Durable Objects" href="/build/storage/durable-objects">
+    Per-entity state with SQLite, alarms, and WebSockets.
+  </Card>
+  <Card title="Runtime reference" href="/build/reference/runtime">
+    Handlers, globals, Node.js built-in modules, crypto, and limits.
+  </Card>
+</CardGroup>

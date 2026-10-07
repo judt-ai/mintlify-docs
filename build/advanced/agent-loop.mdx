@@ -1,0 +1,418 @@
+---
+title: "Build an AI agent loop"
+sidebarTitle: "AI agent loop"
+description: "Run an agent that calls a model and tools in a loop, with durable state in a Durable Object."
+---
+An agent loop calls a model, runs the tools that the model asks for, and repeats. This guide shows you how to keep each agent session in one Durable Object. The object holds the conversation, the tool calls, and the run status in SQLite, and its alarm moves the loop forward one step at a time. A crash or a restart of celld, the judt runtime, then resumes the loop from the saved state.
+
+Use this pattern for interactive agents that need chat, live progress, pause, cancel, or approval. For a batch job with no user interaction, you can also use a Workflow. For more information, see [Workflows](/build/background/workflows).
+
+The examples use the Anthropic Messages API. The same structure works with other model providers that you call over HTTP with `fetch`.
+
+## Before you begin
+
+Make sure that you have the following:
+
+- A Secret that holds the API key of your model provider. The examples read it as `env.ANTHROPIC_API_KEY`. For more information, see [Vars and Secrets](/build/vars-and-secrets).
+- A working knowledge of Durable Objects, including SQLite storage, alarms, and WebSockets. For more information, see [Durable Objects](/build/storage/durable-objects).
+
+## How the loop works
+
+The design follows these rules:
+
+- **One object for each session.** Your Worker addresses a session with `env.AGENTS.getByName(sessionId)`.
+- **Only the `alarm` handler runs steps.** RPC methods and the `fetch` handler change the status and set the alarm, but they never call the model. Alarms of one object don't overlap, so two steps can't run at the same time.
+- **One unit of work for each alarm.** A unit is one model call, or the tool calls of one model response. Each unit must finish within the 300-second limit for one handler call, and one `fetch` has a 120-second limit.
+- **Save before you continue.** The object saves the model response and its tool calls before it runs tools. It saves each tool result before the next model call. After a crash, the alarm runs again and continues from the saved state.
+- **A generation number for each run.** The object increments `generation` on start and on cancel. After each `await`, it compares the number. If the number changed, then a user cancelled or restarted the run during the call, and the object discards the result.
+
+## Create the agent
+
+<Steps>
+<Step title="Configure the binding and vars">
+
+Add a Durable Object binding for the `Agent` class and the model settings to the `wrangler.json` file:
+
+```json wrangler.json
+{
+  "durable_objects": {
+    "bindings": [{ "name": "AGENTS", "class_name": "Agent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Agent"] }],
+  "vars": { "MODEL": "MODEL_NAME" }
+}
+```
+
+Replace `MODEL_NAME` with the model ID from your provider.
+
+Keep the API key in a Secret, not in `vars`. The `callAnthropic` function in a later step also reads an optional `LLM_BASE_URL` var, which lets you point the App at a mock server for tests.
+
+</Step>
+<Step title="Define the schema">
+
+The object stores messages and tool calls in two tables:
+
+```js index.js
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS messages (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  role TEXT NOT NULL,               -- 'user' | 'assistant'
+  content TEXT NOT NULL,            -- JSON: Anthropic content blocks
+  created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id TEXT PRIMARY KEY,              -- tool_use id from the model
+  step INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  input TEXT NOT NULL,
+  status TEXT NOT NULL,             -- 'pending' | 'waiting_approval' | 'running' | 'done' | 'error'
+  output TEXT);
+`;
+```
+
+The run state lives in `ctx.storage.kv` under the following keys:
+
+- `status`: one of `idle`, `running`, `waiting_approval`, `paused`, `done`, `failed`, or `cancelled`.
+- `generation`: the run counter.
+- `steps`: the number of model calls in this run.
+- `attempts`: the number of failed attempts for the current unit.
+- `error`: the reason for a `failed` or `done` status, if any.
+
+</Step>
+<Step title="Add the control methods">
+
+The control methods change the status and set or delete the alarm. They don't call the model:
+
+```js index.js
+import { DurableObject } from "cloudflare:workers";
+
+const MAX_STEPS = 20, MAX_ATTEMPTS = 5, MAX_TOOL_OUTPUT = 8_000;
+
+export class Agent extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.kv = ctx.storage.kv;
+    this.sql = ctx.storage.sql;
+    this.sql.exec(SCHEMA);
+  }
+
+  async start(goal) {
+    if (this.kv.get("status") === "running") throw new Error("already running");
+    this.kv.put("generation", (this.kv.get("generation") ?? 0) + 1);
+    this.addMessage("user", [{ type: "text", text: goal }]);
+    this.kv.put("status", "running");
+    this.kv.put("steps", 0);
+    this.kv.put("attempts", 0);
+    await this.ctx.storage.setAlarm(Date.now());
+    this.broadcast({ type: "status", status: "running" });
+  }
+
+  async cancel() {
+    this.kv.put("generation", (this.kv.get("generation") ?? 0) + 1);
+    this.kv.put("status", "cancelled");
+    await this.ctx.storage.deleteAlarm();
+    this.broadcast({ type: "status", status: "cancelled" });
+  }
+
+  async pause() {
+    if (this.kv.get("status") === "running") {
+      this.kv.put("status", "paused");
+      await this.ctx.storage.deleteAlarm();
+    }
+  }
+
+  async resume() {
+    if (this.kv.get("status") === "paused") {
+      this.kv.put("status", "running");
+      await this.ctx.storage.setAlarm(Date.now());
+    }
+  }
+
+  // The alarm, callModel, runTools, and helper methods follow in the next steps.
+}
+```
+
+</Step>
+<Step title="Run one unit in the alarm handler">
+
+Each alarm runs one unit. If tool calls are waiting, then the alarm runs them. Otherwise, it calls the model. After a successful unit, the alarm schedules the next one at once:
+
+```js index.js
+  async alarm() {
+    if (this.kv.get("status") !== "running") return;
+    const generation = this.kv.get("generation");
+    const pending = this.sql
+      .exec("SELECT * FROM tool_calls WHERE status IN ('pending', 'running') ORDER BY rowid")
+      .toArray();
+    try {
+      if (pending.length) await this.runTools(pending, generation);
+      else await this.callModel(generation);
+      this.kv.put("attempts", 0);
+    } catch (err) {
+      const attempts = (this.kv.get("attempts") ?? 0) + 1;
+      this.kv.put("attempts", attempts);
+      if (err.fatal || attempts >= MAX_ATTEMPTS) return this.finish("failed", String(err?.message ?? err));
+      return this.ctx.storage.setAlarm(Date.now() + (err.retryAfterMs ?? 2 ** attempts * 1000));
+    }
+    if (this.kv.get("status") === "running" && this.kv.get("generation") === generation)
+      await this.ctx.storage.setAlarm(Date.now()); // next unit
+  }
+```
+
+The `alarm` handler does its own retries. It catches model errors, sets the alarm with backoff, and sets the status to `failed` after `MAX_ATTEMPTS`. Don't let the `alarm` handler throw for expected errors.
+
+</Step>
+<Step title="Call the model and save the response">
+
+The `callModel` method checks the step limit, calls the model, and saves the response and its tool calls in one transaction:
+
+```js index.js
+  async callModel(generation) {
+    const steps = this.kv.get("steps");
+    if (steps >= MAX_STEPS) return this.finish("done", "step limit");
+    const response = await callAnthropic(this.env, this.history(), TOOLS);
+    if (this.kv.get("generation") !== generation) return; // cancelled during the call
+    this.ctx.storage.transactionSync(() => {
+      this.addMessage("assistant", response.content);
+      for (const block of response.content.filter((b) => b.type === "tool_use"))
+        this.sql.exec(
+          "INSERT OR IGNORE INTO tool_calls (id, step, name, input, status) VALUES (?, ?, ?, ?, 'pending')",
+          block.id, steps, block.name, JSON.stringify(block.input),
+        );
+      this.kv.put("steps", steps + 1);
+    });
+    this.broadcast({ type: "assistant", content: response.content });
+    if (response.stop_reason !== "tool_use") this.finish("done");
+  }
+```
+
+The `callAnthropic` function is a module-level function. It wraps the request in a timeout with a timer that it clears:
+
+```js index.js
+async function withTimeout(ms, fn) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(`timeout after ${ms} ms`)), ms);
+  try {
+    return await fn(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callAnthropic(env, messages, tools) {
+  const res = await withTimeout(110_000, (signal) =>
+    fetch(`${env.LLM_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({ model: env.MODEL, max_tokens: 4096, system: SYSTEM_PROMPT, tools, messages }),
+    }),
+  );
+  if (res.status === 429 || res.status >= 500) {
+    const err = new Error(`model ${res.status}`);
+    err.retryAfterMs = Number(res.headers.get("retry-after") ?? 0) * 1000 || undefined;
+    throw err;
+  }
+  if (!res.ok) throw Object.assign(new Error(`model ${res.status}: ${await res.text()}`), { fatal: true });
+  return res.json(); // { content: [...], stop_reason }
+}
+```
+
+Don't use `AbortSignal.timeout()` in a Durable Object. Its timer keeps the event open after the `fetch` call ends, and the next alarm waits for that timer. The `withTimeout` function clears its timer instead.
+
+A 429 or 5xx response is retryable, and the `alarm` handler retries it with backoff, obeying the `Retry-After` header. Any other 4xx response doesn't improve with a retry, so the function marks it as fatal, and the run fails at once.
+
+To show text while the model writes it, call the model with `"stream": true`, and send each delta to the sockets. Save only the complete message.
+
+</Step>
+<Step title="Run tools and save each result">
+
+The `runTools` method runs the pending tool calls of one model response, saves each result, and then adds the results to the conversation:
+
+```js index.js
+  async runTools(pending, generation) {
+    for (const call of pending) {
+      let output, status = "done";
+      if (call.status === "running") {
+        // Interrupted by a crash: don't run it again.
+        output = "error: interrupted by a restart, not run again";
+        status = "error";
+      } else {
+        this.sql.exec("UPDATE tool_calls SET status = 'running' WHERE id = ?", call.id);
+        await this.ctx.storage.sync(); // the mark is durable before the side effect
+        try {
+          output = await TOOL_IMPL[call.name](JSON.parse(call.input), {
+            env: this.env,
+            key: `${this.ctx.id.name}:${call.id}`,
+          });
+        } catch (err) {
+          output = `error: ${err?.message ?? err}`;
+          status = "error";
+        }
+      }
+      if (this.kv.get("generation") !== generation) return;
+      const text = String(typeof output === "string" ? output : JSON.stringify(output)).slice(0, MAX_TOOL_OUTPUT);
+      this.sql.exec("UPDATE tool_calls SET status = ?, output = ? WHERE id = ?", status, text, call.id);
+      this.broadcast({ type: "tool_result", id: call.id, name: call.name, status, output: text });
+    }
+    const results = this.sql
+      .exec("SELECT id, status, output FROM tool_calls WHERE step = ? ORDER BY rowid", pending[0].step)
+      .toArray();
+    this.addMessage("user", results.map((r) => ({
+      type: "tool_result", tool_use_id: r.id, content: r.output, is_error: r.status === "error",
+    })));
+  }
+```
+
+A crash between a tool call and its saved result can cause the tool to run a second time. This method handles both kinds of tool:
+
+- **Idempotent tools** run again after a crash. Give each external side effect an idempotency key. The method passes `${sessionId}:${toolCallId}` as `key`.
+- **Tools that must run at most one time** get the `running` status, and the method calls `await this.ctx.storage.sync()` before the side effect. After a restart, the method doesn't run a `running` call again. It saves the call as an error and gives that result to the model.
+
+The method truncates each tool output to `MAX_TOOL_OUTPUT` characters before it saves the output.
+
+</Step>
+<Step title="Add the helper methods">
+
+Add the helper methods to the `Agent` class:
+
+```js index.js
+  addMessage(role, content) {
+    this.sql.exec(
+      "INSERT INTO messages (role, content, created_at) VALUES (?, ?, ?)",
+      role, JSON.stringify(content), Date.now(),
+    );
+  }
+
+  history() {
+    return this.sql.exec("SELECT role, content FROM messages ORDER BY seq").toArray()
+      .map((m) => ({ role: m.role, content: JSON.parse(m.content) }));
+  }
+
+  finish(status, error = null) {
+    this.kv.put("status", status);
+    this.kv.put("error", error);
+    this.broadcast({ type: "status", status, error });
+  }
+
+  broadcast(event) {
+    const frame = JSON.stringify(event);
+    for (const ws of this.ctx.getWebSockets()) ws.send(frame);
+  }
+```
+
+</Step>
+<Step title="Define the tools">
+
+Define each tool twice: as a JSON Schema in `TOOLS`, which the model receives, and as an implementation in `TOOL_IMPL`, which the object runs. Also define `SYSTEM_PROMPT`. The following example has one tool:
+
+```js index.js
+const SYSTEM_PROMPT = "You are a helpful assistant.";
+
+const TOOLS = [
+  {
+    name: "get_time",
+    description: "Returns the current time as an ISO 8601 string.",
+    input_schema: { type: "object", properties: {} },
+  },
+];
+
+const TOOL_IMPL = {
+  async get_time(input, { env, key }) {
+    return new Date().toISOString();
+  },
+};
+```
+
+Follow these rules for tools:
+
+- Validate the input before you use it.
+- For each tool that calls the network, set a timeout with the `withTimeout` function and a limit on the response size. Don't let a URL tool call internal addresses.
+- To run code that the model writes, use a Dynamic Worker with `globalOutbound: null`. For more information, see [Dynamic Workers](/build/advanced/dynamic-workers).
+
+</Step>
+<Step title="Connect clients">
+
+Clients send commands through your Worker and receive events over a WebSocket. The Worker routes each request to the object of the session:
+
+```js index.js
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const match = url.pathname.match(/^\/sessions\/([^/]+)(\/start|\/cancel)?$/);
+    if (!match) return new Response("not found", { status: 404 });
+    // Check that the caller can use this session before you continue.
+    const agent = env.AGENTS.getByName(match[1]);
+
+    if (request.method === "POST" && match[2] === "/start") {
+      const { goal } = await request.json();
+      try {
+        await agent.start(goal);
+      } catch (err) {
+        return Response.json({ error: String(err?.message ?? err) }, { status: 409 });
+      }
+      return Response.json({ status: "running" });
+    }
+    if (request.method === "POST" && match[2] === "/cancel") {
+      await agent.cancel();
+      return Response.json({ status: "cancelled" });
+    }
+    return agent.fetch(request); // a WebSocket upgrade, or GET for the status and history
+  },
+};
+```
+
+In the `Agent` class, accept WebSockets with `this.ctx.acceptWebSocket`, and send the status and the history on connect. A plain HTTP `GET` returns the same snapshot:
+
+```js index.js
+  async fetch(request) {
+    const snapshot = {
+      type: "snapshot",
+      status: this.kv.get("status") ?? "idle",
+      error: this.kv.get("error") ?? null,
+      messages: this.history(),
+    };
+    if (request.headers.get("Upgrade") !== "websocket") return Response.json(snapshot);
+    const { 0: client, 1: server } = new WebSocketPair();
+    this.ctx.acceptWebSocket(server);
+    server.send(JSON.stringify(snapshot));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+```
+
+The object sends each saved event to all sockets through the `broadcast` method. A socket closes when the object moves to a different node, for example at a deploy. The client must reconnect and load the history again after a close.
+
+</Step>
+<Step title="Optional: Require approval for a tool">
+
+For a tool that needs approval, save its tool call with the `waiting_approval` status, set the run status to `waiting_approval`, and don't set the alarm. Add an `approve(toolCallId)` RPC method that sets the tool call to `pending`, sets the run status to `running`, and sets the alarm.
+
+</Step>
+</Steps>
+
+## Keep the history within the model context
+
+The history grows at each step. Before each model call, check that the history fits the context of the model. Use one of the following approaches:
+
+- Send the first user message and the last messages, up to a fixed count.
+- Keep a summary row, and send the summary in place of old messages.
+
+Don't remove a `tool_use` block without its `tool_result` block, because the API refuses the request.
+
+Also limit the number of steps, the tokens, and the size of each tool result. The example sets `MAX_STEPS`, `max_tokens`, and `MAX_TOOL_OUTPUT`.
+
+## Test the loop
+
+Test the loop on the dev server with a mock model server instead of the real provider:
+
+1. Write a local mock server for the `/v1/messages` path. Return a `tool_use` response first, and a text response second.
+1. In the `vars` key of the `wrangler.json` file, set `LLM_BASE_URL` to the URL of the mock server. Remove the var before you deploy.
+1. Start a run, restart the dev server in the middle of the run, and check that the loop continues.
+1. Stop the dev server with `kill -9` during a tool call, start it again, and check that the tool doesn't run a second time.
+1. Check that the next step starts less than one second after the previous step ends.
+1. Cancel a run during a model call, and check that the object discards the result.
+
+For more information, see [Test on the dev server](/build/dev-server).

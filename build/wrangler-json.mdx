@@ -1,0 +1,107 @@
+---
+title: "Configure wrangler.json"
+sidebarTitle: "wrangler.json"
+description: "The keys that judt accepts in the wrangler.json file, and how each binding becomes a property of env."
+---
+The `wrangler.json` file configures the Worker and declares its bindings. It sits at the root of the App. celld, the judt runtime, reads the Cloudflare Wrangler format, and judt accepts a subset of its keys. Deploy refuses a file that sets any other key.
+
+## File format
+
+judt reads only `wrangler.json`. It doesn't read a `wrangler.jsonc` or `wrangler.toml` file. The file must be a JSON object, and JSON has no comments.
+
+The following example shows a typical configuration:
+
+```json wrangler.json
+{
+  "name": "app",
+  "main": "index.js",
+  "compatibility_date": "2026-09-17",
+  "vars": { "SUPPORT_EMAIL": "support@example.com" },
+  "d1_databases": [{ "binding": "DB", "database_name": "main" }],
+  "kv_namespaces": [{ "binding": "SESSIONS", "id": "sessions" }]
+}
+```
+
+## Top-level keys
+
+The following table lists the top-level keys that configure the Worker:
+
+| Key | Type | Description |
+|---|---|---|
+| `name` | String | Required. The App's name, in lowercase letters, digits, and hyphens. Durable Object IDs come from this name, so don't change it after the first deploy. |
+| `main` | String | Required. The entry module: a relative path to a `.js` or `.mjs` file, such as `index.js` or `dist/index.js`, without a leading `./`. |
+| `no_bundle` | Boolean | If `true`, then deploy uses the entry module as it is, without bundling. Default: `false`. For more information, see [npm packages and builds](/build/npm-and-builds#deploy-bundled-output). |
+| `compatibility_date` | String | The compatibility date, such as `2026-09-17`. For more information, see [Compatibility settings](#compatibility-settings). |
+| `compatibility_flags` | Array of strings | Compatibility flags. celld obeys only some of them. |
+| `vars` | Object | Plain-text values that code reads as `env.NAME`. Each value must be a string. For more information, see [Vars and Secrets](/build/vars-and-secrets). |
+
+## Keys for bindings and features
+
+The following table lists the keys that declare bindings and other features, and the page that documents each one:
+
+| Key | Declares | Page |
+|---|---|---|
+| `durable_objects` | Durable Object bindings | [Durable Objects](/build/storage/durable-objects) |
+| `migrations` | Durable Object classes, as `new_sqlite_classes` entries | [Durable Objects](/build/storage/durable-objects) |
+| `d1_databases` | D1 databases | [D1](/build/storage/d1) |
+| `kv_namespaces` | KV namespaces | [KV](/build/storage/kv) |
+| `r2_buckets` | R2 buckets | [R2](/build/storage/r2) |
+| `assets` | The static assets directory and its routing | [Static assets](/build/static-assets) |
+| `queues` | Queue producers and consumers | [Queues](/build/background/queues) |
+| `triggers` | Cron Triggers | [Cron Triggers](/build/background/cron-triggers) |
+| `workflows` | Workflows | [Workflows](/build/background/workflows) |
+| `worker_loaders` | Worker Loader bindings for Dynamic Workers | [Dynamic Workers](/build/advanced/dynamic-workers) |
+
+The following table lists the keys that each entry of the storage bindings accepts. Deploy refuses any other key in an entry.
+
+| Key | Entry keys |
+|---|---|
+| `durable_objects` | `bindings` only. Each binding accepts `name` and `class_name`. |
+| `migrations` | `tag` and `new_sqlite_classes` |
+| `d1_databases` | `binding`, `database_name`, `database_id`, `migrations_dir`, and `migrations_table` |
+| `kv_namespaces` | `binding` and `id` |
+| `r2_buckets` | `binding` and `bucket_name` |
+
+celld checks the entries of `assets`, `queues`, `triggers`, `workflows`, and `worker_loaders` at deploy. Each feature's page lists the keys that it accepts.
+
+## Names
+
+Each binding name becomes a property of `env` in your code. For example, `"binding": "DB"` gives `env.DB`, and a Durable Object binding with `"name": "ROOMS"` gives `env.ROOMS`. Names follow these rules:
+
+- A binding name, such as `binding` or a Durable Object binding's `name`, must be a JavaScript identifier of up to 64 characters.
+- Each binding name can appear only one time across `durable_objects`, `d1_databases`, `kv_namespaces`, and `r2_buckets`.
+- A store name, such as `database_name`, a KV `id`, or `bucket_name`, can contain letters, digits, underscores, and hyphens, and must start with a letter or a digit. The limit is 63 characters.
+- Each class that the file names, such as a Durable Object's `class_name` or a Workflow's `class_name`, must be exported from the entry module.
+
+celld creates each store on first use, and the store name is its identity. A changed store name opens a new, empty store. For more information, see [The App contract](/build/app-contract#binding-creation-on-first-use).
+
+## Refused keys
+
+Deploy refuses every top-level key that isn't in the preceding tables, with the `unsupported_deploy_configuration` code. The refused keys include the following:
+
+- `$schema`
+- `routes`
+- `env`
+- `observability`
+- `ai`
+- `build`
+- `services`
+- `containers`
+
+To run a build step, use the `build` script in the `package.json` file instead of the `build` key.
+
+## Compatibility settings
+
+Keep the `compatibility_date` of the App. celld obeys only the compatibility flags in the following table. It accepts all other flags with no effect. Node.js built-in modules are always available, so you don't need the `nodejs_compat` flag.
+
+Some flags turn on by default from a compatibility date. To turn one off on a later date, set the flag that the "Off flag" column names.
+
+| Flag | Off flag | On by default from | Effect |
+|---|---|---|---|
+| `delete_all_deletes_alarm` | `delete_all_preserves_alarm` | 2026-02-24 | Durable Object `deleteAll()` also deletes the alarm. |
+| `fetcher_no_get_put_delete` | `fetcher_has_get_put_delete` | 2024-03-26 | Removes the deprecated `get()`, `put()`, and `delete()` HTTP methods from stubs. |
+| `queue_json_messages` | `queue_v8_messages` | 2024-03-18 | Queue message bodies default to JSON instead of the V8 structured-clone format. |
+| `assets_navigation_prefers_asset_serving` | `assets_navigation_has_no_effect` | 2025-04-01 | A browser navigation that matches no asset file gets the `not_found_handling` response. |
+| `js_rpc` | None | Flag only | Allows RPC on a Durable Object class that doesn't extend `DurableObject`. |
+| `sqlite_vec` | None | Flag only | Gives SQLite-backed Durable Objects a pre-1.0 version of the sqlite-vec extension. |
+| `websocket_standard_binary_type` | None | Flag only | `binaryType` defaults to `"blob"`, so a binary WebSocket message arrives as a `Blob`. Without the flag, it arrives as an `ArrayBuffer`. |

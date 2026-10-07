@@ -1,0 +1,93 @@
+---
+title: "Test on the dev server"
+sidebarTitle: "Dev server"
+description: "Run and test an App in its sandbox before you publish it."
+---
+Each App's sandbox runs a dev server: `celld dev`, from celld, the judt runtime, on port 3000. The dev server runs the same Worker code that production runs, with its own data. Use it to test each change before you deploy.
+
+## Before you begin
+
+To follow these steps, you need a way to run commands in the App's sandbox, such as the in-product agent, the API, or the MCP server. The sandbox starts when a request needs it.
+
+The dev server starts when the sandbox gets its first preview request, such as when you open a preview URL or the in-product agent uses its `preview` tool. Until then, nothing listens on port 3000. Open a preview before you test with `curl`. For more information about sandboxes and preview URLs, see [Sandbox](/manage/concepts/sandbox).
+
+## How the dev server starts
+
+When the dev server starts, it prepares the App the way that a deploy does, and then it serves the App. It does the following, in order:
+
+1. If the `package-lock.json` file differs from the one that the last install used, then it runs `npm ci`. Install scripts don't run.
+1. If the `package.json` file has a `build` script, then it runs the script one time.
+1. If the `package.json` file has a `dev` script, then it starts the script and keeps it running beside the dev server. Use the `dev` script for a watcher that rebuilds on change, such as `tsc --watch`.
+1. It starts `celld dev` on port 3000.
+
+The sandbox doesn't keep `node_modules` when it stops, so the dev server installs the dependencies again after the sandbox starts. A change to the `package.json` file takes effect the next time that the dev server starts. You don't need to restart anything yourself. For more information about the `build` and `dev` scripts, see [npm packages and builds](/build/npm-and-builds).
+
+## Test a change
+
+<Steps>
+  <Step title="Check the syntax">
+    In the sandbox, check each module that you changed:
+
+    ```bash
+    node --check index.js
+    ```
+
+    If the App has a `build` script, run the build instead. `node --check` checks only the syntax. Node.js can't run Worker code, so a module that passes the check can still fail on the dev server.
+  </Step>
+  <Step title="Send a request">
+    In the sandbox, request a route from the dev server:
+
+    ```bash
+    curl -s http://127.0.0.1:3000/
+    ```
+
+    To open the App in a browser, get a preview URL for the sandbox.
+  </Step>
+  <Step title="Read the logs">
+    If a request fails, read the App's logs. The dev server's entries have the `development` environment. For more information, see [Troubleshoot](/manage/guides/troubleshoot).
+  </Step>
+</Steps>
+
+## Logs and failed builds
+
+The App's logs collect the following entries from the dev server:
+
+- **Your code's output**: each `console.*` call and each uncaught exception, with the `app` source. Production writes the same entries.
+- **The dev server's own events**: builds, reloads, and exits, with the `dev_server` source. A `dev.build_failed` entry includes the bundler's report.
+
+If a build fails, then the previous build keeps serving. A request that seems to ignore your change can mean that the change didn't build, so check the logs for a `dev.build_failed` entry.
+
+## Dev data
+
+The dev server keeps its data in the `.celld/dev/` directory. The data stays after the dev server restarts. Dev data and production data are separate.
+
+## Test D1 migrations
+
+The dev server doesn't apply D1 migrations. To test code that uses a D1 database, add a temporary route that runs the migration SQL with `env.DB.exec()`. Call the route one time, and then remove it:
+
+```js index.js
+// TEMPORARY: remove after one call
+if (url.pathname === "/__dev/migrate") {
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);`);
+  return new Response("ok");
+}
+```
+
+At deploy, judt applies the files in the `migrations/` directory. For more information, see [D1](/build/storage/d1).
+
+## Test a Cron Trigger
+
+The dev server runs Cron Triggers on their schedule, and you can't start one manually. To test the job, put it in a function, and call the function from a temporary route. Remove the route after the test:
+
+```js index.js
+// TEMPORARY
+if (url.pathname === "/__dev/cleanup") return json(await cleanup(env, Date.now()));
+```
+
+In this example, `cleanup` is the job function, and `json` is a helper that returns a JSON response.
+
+For more information, see [Cron Triggers](/build/background/cron-triggers).
+
+## Secrets on the dev server
+
+Your code reads the App's Secrets as `env.NAME` on the dev server, as it does in production. For more information, see [Vars and Secrets](/build/vars-and-secrets).

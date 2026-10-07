@@ -1,0 +1,81 @@
+---
+title: "The App contract"
+description: "The files that an App contains, the limits on its source, and the rules that keep data attached to your code."
+---
+An App is a directory of source files that follows a fixed layout. celld, the judt runtime, reads this layout on the dev server and at deploy. This page lists the files of an App, the limits on its source, and the rules that keep your data attached to your code.
+
+## Files of an App
+
+The following table lists the files and directories that an App can contain:
+
+| Path | Purpose |
+|---|---|
+| `wrangler.json` | The configuration and bindings of the App, in JSON with no comments. Required. |
+| `index.js` | The entry module. The `main` key in the `wrangler.json` file names it. If a build writes the entry module, `main` is a path such as `dist/index.js`. |
+| `src/` | More modules, which the entry module imports with relative paths. |
+| `package.json` | The npm dependencies and the `build` and `dev` scripts. Optional. |
+| `package-lock.json` | The pinned versions of the dependencies. Required when the `package.json` file declares any dependencies. |
+| `migrations/` | D1 migrations, such as `0001_create_users.sql`. |
+| `public/` | Static assets. |
+| `AGENTS.md` | Notes for coding agents and the people who work on the App: the bindings, the schema, the routes, and the decisions. Keep it up to date when you change the App. |
+
+Write JavaScript ES modules. At deploy, esbuild bundles the entry module, its relative imports, and the packages that it imports from `node_modules`. For TypeScript, JSX, or a frontend bundler, add a build step. For more information, see [npm packages and builds](/build/npm-and-builds).
+
+## The entry module
+
+The `main` key must name a `.js` or `.mjs` file inside the App, as a relative path such as `index.js` or `dist/index.js`. Don't start the path with `./`, and don't point it into `node_modules`. Otherwise, deploy refuses the source with the `unsupported_entrypoint` code.
+
+The entry module exports a default object with handlers, such as `fetch`, `scheduled`, and `queue`. It also exports each class that the `wrangler.json` file names, such as a Durable Object or Workflow class. Export only handler objects and classes. A plain exported value, such as `export const x = 1`, stops the Worker from starting. For more information, see [Runtime reference](/build/reference/runtime).
+
+## Source limits
+
+The following table lists the limits on the source of an App:
+
+| Item | Limit |
+|---|---|
+| One file | 1 MiB |
+| All files | 32 MiB |
+| Number of files and directories | 2,048 |
+
+At deploy, each directory counts toward the 2,048 limit, the same as each file. If the source passes a limit, then deploy refuses it with the `file_limit` or `source_limit` code. Keep large media out of the source, and store it in R2 instead. For more information, see [R2](/build/storage/r2).
+
+## Reserved paths
+
+Some paths belong to the sandbox, the dev server, or the build, and aren't part of the source. Deploy refuses a source that contains any of the following names, at any level of the tree, with the `reserved_path` code:
+
+- `node_modules`
+- `dist`
+- `.cache`
+- `.celld`
+- `.env` and any name that starts with `.env.`
+- `.dev.vars` and any name that starts with `.dev.vars.`
+
+You can't write files at these paths through the platform's file operations. Deploy also refuses symbolic links. The `.gitignore` file in the judt templates lists `node_modules`, `dist`, `.celld`, the `.env` files, and `.dev.vars`, so a commit leaves them out.
+
+## Binary files
+
+Source files can be of any type, such as images, fonts, and WebAssembly modules. To add a binary file, use one of the following methods:
+
+- Download the file with a command in the sandbox:
+
+  ```bash
+  curl -fsSLo public/logo.png LOGO_URL
+  ```
+
+  Replace `LOGO_URL` with the URL of the file.
+- Upload the file in the console.
+- Send the file's bytes to the API's file write operation. For more information, see [Sandbox](/manage/concepts/sandbox).
+
+## Binding creation on first use
+
+You don't provision bindings. celld creates each database, namespace, and bucket the first time that your code uses it. The name in the `wrangler.json` file is the store's identity: `database_id` for D1 if you set it, and `database_name` otherwise; `id` for KV; and `bucket_name` for R2.
+
+A typo in one of these names gives your code a new, empty store. The data stays under the old name, and your code no longer reads it. Before you deploy a change to a store name, check it against the name that holds your data.
+
+## Keep the App name
+
+The `name` key in the `wrangler.json` file names the App to celld. Use lowercase letters, digits, and hyphens, and start and end the name with a letter or a digit. Otherwise, deploy refuses the source.
+
+<Warning>
+Don't change `name` after the first deploy. Durable Object IDs come from the App name and the class name. A new name points every call to new, empty objects, and the data in the old objects is no longer reachable.
+</Warning>

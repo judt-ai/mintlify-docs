@@ -1,0 +1,178 @@
+---
+title: "Dynamic Workers"
+description: "Run code that wasn't part of the App at build time, such as user code or AI-generated code."
+---
+A Dynamic Worker is JavaScript that your App loads at runtime into a separate V8 isolate. The code can come from a user, a database, or a model. Use Dynamic Workers for code that you didn't write at build time, such as user transforms, plugins, formulas, and AI-generated tools.
+
+Loaded code gets no bindings and no Secrets. It can use only what you pass to it. celld, the judt runtime, implements this feature with the Cloudflare Worker Loader API.
+
+## Configure
+
+Add a Worker Loader binding to the `wrangler.json` file:
+
+```json wrangler.json
+{ "worker_loaders": [{ "binding": "LOADER" }] }
+```
+
+The entry accepts only the `binding` key. Deploy refuses `limits` and `tails` in this entry. Set them in the code object that you load instead.
+
+## Load and call code
+
+Call `env.LOADER.get` with an ID and a function that returns the code. Then call an entrypoint of the loaded Worker:
+
+```js
+const worker = env.LOADER.get(`script-${script.id}-${script.hash}`, () => ({
+  compatibilityDate: "2026-09-17",
+  mainModule: "runner.js",
+  modules: { "runner.js": RUNNER, "user.js": script.source },
+  env: { CONFIG: { tenant: script.id } },
+  globalOutbound: null,
+  limits: { cpuMs: 50, subRequests: 0 },
+}));
+
+const result = await worker.getEntrypoint("Runner").run(input);
+```
+
+The loader has the following methods:
+
+- `env.LOADER.get(id, getCode)`: compiles the code at the first use of the ID in an isolate. Later calls with the same ID use the compiled code. The `getCode` function can be async, and it runs only to compile. An error in `getCode` appears at the first call.
+- `env.LOADER.load(code)`: compiles the code at each call, with no cache.
+- `stub.dispose()`: releases a loaded Worker and its ID.
+
+<Warning>
+Put a version or a content hash in the ID that you pass to `env.LOADER.get`. If the code changes and the ID stays the same, then the old code continues to run.
+</Warning>
+
+Each node and each isolate compiles the code separately.
+
+### The code object
+
+The following table lists the fields of the object that `getCode` returns, or that you pass to `load`:
+
+| Field | Description |
+|---|---|
+| `mainModule` | Required. The name of the entry module. |
+| `modules` | Required. A map of module names to sources, such as `{ "name.js": "source", "m.wasm": { wasm: bytes } }`. Relative imports resolve in this map. The maximum size is 64 MiB. |
+| `compatibilityDate` | Required. The compatibility date of the loaded code. |
+| `compatibilityFlags` | Optional. The compatibility flags of the loaded code. |
+| `env` | Optional. Structured-clone values and capability stubs. The maximum size is 1 MiB. |
+| `globalOutbound` | Optional. Controls network access. For more information, see [Control network access](#control-network-access). |
+| `limits` | Optional. `{ cpuMs, subRequests }`, applied to each call. |
+| `tails` | Optional. Fetchers that receive the logs and errors of each call. |
+
+celld refuses the `allowExperimental` field.
+
+## Call entrypoints
+
+A loaded Worker exposes the following entrypoints:
+
+- `worker.getEntrypoint()` returns a Fetcher for the default export.
+- `worker.getEntrypoint("NAME", { props, limits })` returns an RPC stub for a `WorkerEntrypoint` export named `NAME`. The `props` value becomes `this.ctx.props` in the loaded code.
+- `worker.getDurableObjectClass("NAME", { props })` returns a class that you can run as a facet. For more information, see [Durable Object facets](/build/advanced/facets).
+
+A loaded Worker can't load other Workers.
+
+## Run user code under the CPU limit
+
+Top-level code of a module can run outside the `limits.cpuMs` limit. A loop at the top level of user code can then use a CPU core with no limit. To prevent this, don't import user code statically. Load your own runner module with the user code, and import the user code dynamically inside the limited call:
+
+```js runner.js
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+export class Runner extends WorkerEntrypoint {
+  async run(input) {
+    // The top-level user code runs here, under limits.cpuMs.
+    const mod = await import("./user.js");
+    return await mod.default(input);
+  }
+}
+```
+
+We recommend the following practices for user code:
+
+- Define a clear contract, for example "export default a function that takes the input and returns JSON."
+- Put each call in a `try...catch` block. User code throws, times out, and reaches limits. Return a 4xx response for these errors, not a 500.
+- Before you save user code, do a test load and a test call. Return syntax errors to the user.
+
+## Give the code capabilities
+
+The loaded isolate has no `env.DB`, no `env.KV`, and no Secrets. To give access to one of them, export a `WorkerEntrypoint` class from your App, and pass a stub with `props` in the `env` field of the code object. Each call from the loaded code comes back into your code, where you can check it:
+
+```js index.js
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+export class TenantStore extends WorkerEntrypoint {
+  async get(key) {
+    return this.env.KV.get(`${this.ctx.props.tenant}:${key}`);
+  }
+  async put(key, value) {
+    if (String(value).length > 10_000) throw new Error("value too large");
+    await this.env.KV.put(`${this.ctx.props.tenant}:${key}`, String(value));
+  }
+}
+```
+
+In the code object, pass the stub. The `ctx` value is the `ctx` argument of the `fetch` handler, or `this.ctx` in a Durable Object:
+
+```js
+env: { STORE: ctx.exports.TenantStore({ props: { tenant: tenantId } }) },
+```
+
+Don't pass raw bindings or Secret values to loaded code. Pass small capabilities with limits instead.
+
+## Control network access
+
+The `globalOutbound` field sets what the loaded code can reach:
+
+- `null`: no network. `fetch()` and `connect()` throw. Use this value for untrusted code.
+- Omitted: the loaded code gets the network access of your App. Use this option only for trusted code.
+- A Fetcher: each `fetch` from the loaded code goes to that Fetcher, which can check it against an allowlist. For example, pass `ctx.exports.Egress({ props: { tenant } })`, where `Egress` is a `WorkerEntrypoint` class with a `fetch(request)` method. With a Fetcher, `connect()` and WebSockets always throw.
+
+## Read logs from loaded code
+
+`console.log` calls in loaded code don't go to the App logs. To collect them, export a tail entrypoint and pass it in the `tails` field:
+
+```js index.js
+export class ScriptTail extends WorkerEntrypoint {
+  async tail(events) {
+    for (const e of events) {
+      console.log("script", this.ctx.props.id, e.outcome, JSON.stringify(e.logs).slice(0, 2000));
+    }
+  }
+}
+```
+
+In the code object, pass the tail:
+
+```js
+tails: [ctx.exports.ScriptTail({ props: { id } })],
+```
+
+## Limits
+
+The following table lists the limits of Dynamic Workers:
+
+| Item | Limit |
+|---|---|
+| Live Dynamic Workers for each process | 256 |
+| Live Dynamic Workers for each App version | 255 |
+| Size of `modules` | 64 MiB |
+| Size of `env` | 1 MiB |
+
+A load over the limit throws. Use stable IDs and the `dispose` method. Don't call `load` for each request.
+
+Loaded Workers end with the isolate that loaded them. After a deploy, celld compiles them again.
+
+## Security boundary
+
+The boundary is a separate V8 isolate in the same process. It isn't a virtual machine. Always set `limits`. For untrusted code, also set `globalOutbound` to `null`.
+
+## Differences from Cloudflare
+
+Keep the following celld behavior in mind when you port Dynamic Worker code from Cloudflare:
+
+- The `worker_loaders` entry accepts only `binding`. Set `limits` and `tails` in the code object.
+- celld refuses the `allowExperimental` field.
+- Top-level module code can run outside `limits.cpuMs`. Import user code dynamically inside the limited call.
+- `console.log` in loaded code doesn't reach the App logs. Use a tail.
+- A process holds a maximum of 256 live Dynamic Workers.

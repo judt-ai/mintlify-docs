@@ -1,0 +1,267 @@
+---
+title: "Runtime reference"
+sidebarTitle: "Runtime"
+description: "Handlers, env and ctx, imports, web API differences, crypto, limits, and compatibility flags in celld."
+---
+This reference describes the JavaScript environment that celld, the judt runtime, gives your App. celld embeds V8 and implements the Cloudflare Workers runtime API. Use this page to look up handlers, the `env` and `ctx` objects, imports, web API differences, crypto support, limits, and compatibility flags. For a summary of the differences from Cloudflare, see [Differences from Cloudflare Workers](/build/cloudflare-differences).
+
+## Entry module
+
+The entry module is the file that `main` names in the `wrangler.json` file, for example `index.js`. It's a module Worker: it exports a default object with handlers, and it exports each class that the `wrangler.json` file names.
+
+```js index.js
+import { DurableObject, WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
+
+export default {
+  async fetch(request, env, ctx) {
+    return new Response("ok");
+  },
+  async scheduled(controller, env, ctx) {},
+  async queue(batch, env, ctx) {},
+};
+
+export class Room extends DurableObject {}
+```
+
+The entry module can export only handler objects and classes. It must export each class that the `wrangler.json` file names, such as a Durable Object class or a Workflow class. If the entry module exports any other value, such as `export const x = 1`, then the App doesn't start.
+
+## Handlers
+
+The default export can define the following handlers.
+
+| Handler | Signature | Runs for | More information |
+|---|---|---|---|
+| `fetch` | `fetch(request, env, ctx)` | Each HTTP request that static assets don't serve | [Static assets](/build/static-assets) |
+| `scheduled` | `scheduled(controller, env, ctx)` | Each occurrence of a cron expression | [Cron Triggers](/build/background/cron-triggers) |
+| `queue` | `queue(batch, env, ctx)` | Each batch of messages from a queue that the App consumes | [Queues](/build/background/queues) |
+
+celld has no `tail` or `email` handler.
+
+The entry module also exports the classes that celld runs. The following table lists the base classes, which you import from the `cloudflare:workers` module.
+
+| Base class | Use it for | More information |
+|---|---|---|
+| `DurableObject` | A Durable Object class that a binding names | [Durable Objects](/build/storage/durable-objects) |
+| `WorkflowEntrypoint` | A Workflow class that a binding names | [Workflows](/build/background/workflows) |
+| `WorkerEntrypoint` | An RPC entrypoint that you give to loaded code through `ctx.exports` | [Dynamic Workers](/build/advanced/dynamic-workers) |
+
+## The `env` object
+
+The `env` object holds the bindings that you declare in the `wrangler.json` file, the `vars` values, and the Secrets. Each binding name is a property: a D1 binding named `DB` is `env.DB`. If a Secret and a var have the same name, then the Secret replaces the var.
+
+Pass `env` to your functions as a parameter. Don't store it in a module-level variable.
+
+For more information, see [Vars and Secrets](/build/vars-and-secrets).
+
+## The `ctx` object
+
+The `ctx` object is the third argument of each handler. The following table lists its members.
+
+| Member | Behavior |
+|---|---|
+| `ctx.waitUntil(promise)` | Keeps the work of `promise` alive after the handler returns its response. |
+| `ctx.passThroughOnException()` | Has no effect. |
+| `ctx.exports.NAME` | Returns a stub for the exported `WorkerEntrypoint` or Durable Object class named `NAME`. To give the stub startup data, call it with props: `ctx.exports.NAME({ props })`. The class reads them from `this.ctx.props`. |
+
+In a Durable Object, `this.ctx.exports` gives the same stubs. A Durable Object doesn't need `ctx.waitUntil`, because pending I/O stays alive after the handler returns.
+
+## Imports
+
+The entry module can import relative modules, such as `./src/db.js`, the `cloudflare:*` modules in the following table, and the Node.js built-in modules that celld supports. At deploy, esbuild bundles the entry module, its relative imports, and the npm packages that it imports. For more information, see [npm packages and builds](/build/npm-and-builds).
+
+The following table lists the `cloudflare:*` modules that work.
+
+| Module | Exports |
+|---|---|
+| `cloudflare:workers` | `DurableObject`, `WorkerEntrypoint`, `WorkflowEntrypoint`, `RpcTarget` |
+| `cloudflare:workflows` | `NonRetryableError` |
+| `cloudflare:sockets` | `connect` |
+
+### Node.js built-in modules
+
+The following Node.js built-in modules work without the `nodejs_compat` flag. Node.js built-ins are always on.
+
+| Module | Support |
+|---|---|
+| `node:assert` | Supported |
+| `node:async_hooks` | Supported |
+| `node:buffer` | Supported |
+| `node:crypto` | Partial. For more information, see [Crypto](#crypto). |
+| `node:diagnostics_channel` | Supported |
+| `node:events` | Supported |
+| `node:fs` | Read-only subset |
+| `node:os` | Supported |
+| `node:path` | Supported |
+| `node:stream` | Supported |
+| `node:timers/promises` | Supported |
+| `node:util` | Supported |
+| `node:zlib` | Synchronous gzip and deflate only |
+
+### Other modules
+
+All other `node:*` and `cloudflare:*` modules import without an error, but they throw an error on the first call. An npm package that depends on one of these modules fails when it calls the module. Use web APIs instead.
+
+## Web API differences
+
+celld supports the standard web APIs of Workers. The following table lists each API group and how it behaves on celld.
+
+| API | Behavior on celld |
+|---|---|
+| `fetch`, `Request`, `Response`, `Headers`, `URL`, `FormData`, `Blob` | Supported. There's no `cache` request option. `request.cf` has no geolocation or colo data. celld removes the `Content-Length` header from Worker responses, except for responses to `HEAD` requests. |
+| Streams, `CompressionStream` | Supported. A stream that nothing reads expires after 60 seconds. |
+| `caches.default`, `caches.open` | Every lookup misses, and `put` stores nothing. To cache values, use KV with `expirationTtl`. For more information, see [KV](/build/storage/kv). |
+| `WebSocket`, `WebSocketPair` | Supported. A socket closes when its event ends, unless a Durable Object accepts it. For more information, see [Durable Objects](/build/storage/durable-objects). |
+| `HTMLRewriter`, `URLPattern`, `structuredClone`, `EventSource`, `MessageChannel`, `WebAssembly` | Supported. |
+| `BroadcastChannel` | Not available. The constructor throws an error. |
+| Timers, `Date.now()`, `performance.now()` | Supported. The clocks advance only at I/O. A loop that only uses the CPU measures 0&nbsp;ms. |
+| `connect()` (TCP) | Supported. The socket closes when its event ends. |
+
+## Crypto
+
+The `crypto.subtle` interface supports the following algorithms:
+
+- SHA digests
+- HMAC
+- HKDF
+- PBKDF2
+- AES-GCM
+- RSASSA-PKCS1-v1_5
+- RSA-PSS
+- RSA-OAEP
+- ECDSA
+- Ed25519
+- X25519
+
+JSON Web Tokens (JWTs) that use `HS256`, `RS256`, `PS256`, `ES256`, or `EdDSA` work.
+
+### Crypto limits
+
+The crypto implementation has the following limits:
+
+- ECDSA supports only the P-256 curve with SHA-256, so `ES384` and `ES512` don't work.
+- AES-GCM tags must be 96 to 128 bits long.
+- You can't export or wrap a secret key in `jwk` format.
+- The `node:crypto` module has no ciphers, no Diffie-Hellman, no RSA-PSS, no DSA, and no streaming signatures. Use `crypto.subtle` for these operations.
+
+### Hash passwords
+
+To hash a password, use PBKDF2 with SHA-256, a random 16-byte salt, and at least 100,000 iterations. Store the salt and the iteration count with the hash.
+
+### Compare secrets in constant time
+
+To compare a secret, such as a token or a webhook signature, use a comparison that takes the same time for every input. The following function signs both values with a random HMAC key and compares the results:
+
+```js
+async function safeEqual(a, b) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    crypto.getRandomValues(new Uint8Array(32)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const enc = new TextEncoder();
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.sign("HMAC", key, enc.encode(s))));
+  return new Uint8Array(x).every((v, i) => v === new Uint8Array(y)[i]);
+}
+```
+
+To verify an inbound webhook, compute the HMAC of the request body, and compare it with the signature by using `safeEqual`.
+
+## Limits
+
+The following table lists the runtime limits.
+
+| Item | Limit |
+|---|---|
+| One handler call | 300 seconds |
+| One outbound `fetch` call | 120 seconds |
+| V8 heap for each isolate | 128&nbsp;MB |
+| Concurrent requests into one Durable Object | 64, and then celld returns `503` |
+| `blockConcurrencyWhile` and storage transactions | 30 seconds |
+| A stream that nothing reads | 60 seconds |
+
+Don't read large bodies into memory. Stream them instead. Each binding has its own limits. For more information, see the page for that binding.
+
+## Outbound calls
+
+Keep the API keys for outbound calls in Secrets, and read them from `env`, for example `env.ANTHROPIC_API_KEY`. For more information, see [Vars and Secrets](/build/vars-and-secrets).
+
+### Set a timeout
+
+Set a timeout on each outbound call. Use an `AbortController`, and clear its timer when the call ends:
+
+```js
+async function withTimeout(ms, fn) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(`timeout after ${ms} ms`)), ms);
+  try {
+    return await fn(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const res = await withTimeout(30_000, (signal) => fetch(url, { signal }));
+```
+
+### Timeouts in Durable Objects
+
+Don't use `AbortSignal.timeout()` in a Durable Object. Its timer stays active after the `fetch` call ends, and the timer keeps the event open. The next alarm then waits for the timer to fire. Use the `withTimeout` function from the preceding section.
+
+## Compatibility flags
+
+Keep the `compatibility_date` value of your App. celld obeys only the following compatibility flags and their off flags:
+
+- `assets_navigation_prefers_asset_serving`
+- `delete_all_deletes_alarm`
+- `fetcher_no_get_put_delete`
+- `js_rpc`
+- `queue_json_messages`
+- `sqlite_vec`
+- `websocket_standard_binary_type`
+
+celld accepts all other flags in the `compatibility_flags` list without effect. For the effect of each flag, its off flag, and the date from which it's on by default, see [Compatibility settings](/build/wrangler-json#compatibility-settings). You don't need the `nodejs_compat` flag, because Node.js built-in modules are always on.
+
+## Patterns
+
+### Route requests without a dependency
+
+You can route requests with `URLPattern` and no framework. The following entry module matches each request against a list of routes, and catches errors at the top level:
+
+```js index.js
+const routes = [
+  ["GET", new URLPattern({ pathname: "/api/links/:code" }), getLink],
+  ["POST", new URLPattern({ pathname: "/api/links" }), createLink],
+];
+
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      for (const [method, pattern, handler] of routes) {
+        const match = pattern.exec(request.url);
+        if (match && request.method === method) {
+          return await handler(request, env, ctx, match.pathname.groups);
+        }
+      }
+      return json({ error: "not_found" }, 404);
+    } catch (err) {
+      console.error("unhandled", err);
+      return json({ error: "internal" }, 500);
+    }
+  },
+};
+
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+```
+
+The `getLink` and `createLink` functions are your route handlers. Each one receives the request, `env`, `ctx`, and the named groups from the path.
+
+### Handle input and errors
+
+We recommend the following practices for each route:
+
+- Validate all input. Check the type, the length, and the format of each value.
+- Catch errors at the top level, and write them with `console.error`. Logs from `console.*` and uncaught exceptions go to the App logs.
+- Escape user text before you put it into HTML.

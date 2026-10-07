@@ -1,0 +1,173 @@
+---
+title: "Queues"
+description: "Run background jobs, fan out work, and retry failed messages."
+---
+A queue moves work out of the request. A producer sends messages, and the `queue` handler of your App receives them in batches, with retries and an optional dead-letter queue. Use a queue for email, webhooks, upload processing, and fan-out.
+
+celld, the judt runtime, implements the Cloudflare Queues API, with one consumer for each queue in your App. For the features that celld doesn't support, see [Differences from Cloudflare](#differences-from-cloudflare).
+
+## Configure
+
+Add a `queues` object to the `wrangler.json` file with a producer and a consumer:
+
+```json wrangler.json
+{
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "jobs" }],
+    "consumers": [
+      {
+        "queue": "jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 30,
+        "dead_letter_queue": "jobs-dlq"
+      }
+    ]
+  }
+}
+```
+
+A producer entry accepts the following keys:
+
+- `binding`: the name of the binding in `env`.
+- `queue`: the queue name.
+- `delivery_delay`: a delay, in seconds, for each message that the binding sends. The maximum is 86,400.
+
+The following table lists the keys of a consumer entry:
+
+| Key | Description |
+|---|---|
+| `queue` | The queue to consume. |
+| `max_batch_size` | The number of messages in one batch. The default is 10, and the maximum is 100. |
+| `max_batch_timeout` | The seconds to wait for a batch to fill. The default is 5, and the maximum is 60. |
+| `max_retries` | The number of retries before the message leaves the queue. The default is 3. |
+| `max_concurrency` | The number of batches that can run at the same time. The maximum is 250. |
+| `retry_delay` | The seconds to wait before a retry. |
+| `dead_letter_queue` | The queue that receives a message after its last retry. |
+
+Deploy refuses other keys. A consumer needs a `main` entry module that exports a `queue` handler. Each queue has one consumer.
+
+A dead-letter queue is an ordinary queue. You can add a consumer for it, or keep its messages for inspection.
+
+## Send messages
+
+To send a message, call the `send` method on the producer binding. To send many messages in one call, use the `sendBatch` method:
+
+```js
+await env.JOBS.send({ type: "welcome", userId });
+
+// delaySeconds has a maximum of 86,400.
+await env.JOBS.send({ type: "reminder", userId }, { delaySeconds: 3600 });
+
+// A batch has a maximum of 100 messages and 256 KB.
+await env.JOBS.sendBatch(
+  ids.map((id) => ({ body: { type: "digest", userId: id } })),
+);
+```
+
+Keep messages small. Send IDs, and keep large data in [D1](/build/storage/d1) or [R2](/build/storage/r2). If a list has more than 100 items, divide it into several `sendBatch` calls.
+
+A queue accepts a maximum of 256 concurrent producer calls. After that, the call throws. Catch the error and try again after a short delay.
+
+## Consume messages
+
+The `queue` handler receives a batch. We recommend that you settle each message: call `ack()` when the work succeeds, and `retry()` when it fails.
+
+```js index.js
+export default {
+  async queue(batch, env, ctx) {
+    for (const msg of batch.messages) {
+      try {
+        await handle(msg.body, env, msg.id);
+        msg.ack();
+      } catch (err) {
+        console.error("job failed", batch.queue, msg.id, msg.attempts, err);
+        msg.retry({ delaySeconds: Math.min(3600, 30 * 2 ** (msg.attempts - 1)) });
+      }
+    }
+  },
+};
+```
+
+Each message has the following members:
+
+- `id`: the message ID. It doesn't change between deliveries.
+- `timestamp`: the time the message was sent.
+- `body`: the message content.
+- `attempts`: the delivery count, starting at 1.
+- `ack()`: marks the message as done.
+- `retry({ delaySeconds })`: returns the message to the queue.
+
+The batch has `batch.queue`, the queue name. The `batch.ackAll()` and `batch.retryAll()` methods apply to all messages that aren't settled.
+
+The handler's result decides what happens to messages that you don't settle:
+
+- If the handler returns without any settle calls, then celld acknowledges all messages.
+- If the handler throws, then all messages that aren't acknowledged go back to the queue.
+
+celld adds no backoff of its own. A retry waits for `retry_delay`, or for the `delaySeconds` value that you pass to `retry()`. The preceding example computes an exponential backoff from `msg.attempts`.
+
+After the number of retries in `max_retries`, the message goes to the `dead_letter_queue`. If the consumer has no dead-letter queue, then celld deletes the message.
+
+## Make handlers safe to repeat
+
+Delivery is at least once. A message can run two times, for example after a crash before `ack()`. Make each handler idempotent. Use `msg.id` as the idempotency key, for example in a `UNIQUE` column in D1, or in the `Idempotency-Key` header of an external API.
+
+Delivery has no order. Retries, delays, and concurrent batches change the order of messages. If order matters, put a sequence number in each message, or send the work through a [Durable Object](/build/storage/durable-objects).
+
+## Fan out from a Cron Trigger
+
+A cron handler that processes many records can run past its time. Instead, let the cron handler select IDs and send them to a queue. The consumer does the slow work:
+
+```js index.js
+export default {
+  async scheduled(controller, env, ctx) {
+    let after = 0;
+    for (;;) {
+      const { results } = await env.DB
+        .prepare("SELECT id FROM users WHERE id > ? ORDER BY id LIMIT 100")
+        .bind(after)
+        .all();
+      if (!results.length) break;
+      await env.JOBS.sendBatch(
+        results.map((u) => ({
+          body: { type: "digest", userId: u.id, slot: controller.scheduledTime },
+        })),
+      );
+      after = results.at(-1).id;
+    }
+  },
+};
+```
+
+The `slot` field makes each job idempotent for each run, because `controller.scheduledTime` is the same on a retry. For more information, see [Cron Triggers](/build/background/cron-triggers).
+
+## Limits
+
+The following table lists the limits of a queue:
+
+| Item | Limit |
+|---|---|
+| Message size | 128 KB |
+| Messages in one `sendBatch` call | 100 |
+| Size of one `sendBatch` call | 256 KB |
+| `delaySeconds` | 86,400 seconds |
+| Concurrent producer calls for each queue | 256 |
+| `max_batch_size` | 100 |
+| `max_batch_timeout` | 60 seconds |
+| `max_concurrency` | 250 |
+| Message retention | Four days. You can't change it. |
+
+Each queue has one writer. For high volume, use more queues.
+
+## Differences from Cloudflare
+
+The following Cloudflare Queues features aren't available on celld:
+
+- Pull consumers
+- The Queues HTTP API
+- Consumers in other scripts
+- R2 event notifications
+
+Message retention is fixed at four days.

@@ -1,0 +1,125 @@
+---
+title: "Cron Triggers"
+description: "Run a job on a schedule."
+---
+A Cron Trigger runs the `scheduled` handler of your App on a schedule. Use Cron Triggers for cleanup, digests, polls of an upstream service, and summaries.
+
+celld, the judt runtime, runs each occurrence one time across all of its nodes, so you don't need a lock.
+
+## Configure
+
+Add the schedules to `triggers.crons` in the `wrangler.json` file:
+
+```json wrangler.json
+{
+  "triggers": {
+    "crons": ["0 2 * * *", "*/15 * * * *", "0 9 * * MON-FRI"]
+  }
+}
+```
+
+The `triggers` object has one key, `crons`. A Cron Trigger needs a `main` entry module that exports a `scheduled` handler. If an expression isn't valid, then the deploy stops.
+
+All times are UTC. To run a job at a user's local time, convert that time to UTC. Daylight saving time doesn't change the UTC schedule, so the job runs one hour earlier or later in local time when the clocks change. Tell the people who depend on the job about this shift.
+
+## Write a cron expression
+
+An expression has five fields, in the following order: minute, hour, day of month, month, and day of week. The resolution is one minute.
+
+Each field accepts the following forms:
+
+- `*` for every value
+- A single value
+- A range, `a-b`
+- A list, `a,b`
+- A step, `*/n` or `a-b/n`
+
+Months accept `JAN` to `DEC`, and days of the week accept `SUN` to `SAT`.
+
+The day-of-month field also accepts `L` (the last day), `L-3` (three days before the last day), `LW` (the last weekday), and `15W` (the weekday nearest day 15). The day-of-week field accepts `FRIL` (the last Friday) and `MON#2` (the second Monday).
+
+<Warning>
+Use day names, not numbers, in the day-of-week field. Day numbers start at Sunday (`1` is Sunday), so `1-5` runs from Sunday to Thursday. To run on weekdays, write `MON-FRI`.
+</Warning>
+
+celld refuses the following forms:
+
+- Descending ranges, such as `SAT-SUN`. Write `SAT,SUN` instead.
+- Lists that contain `*`, such as `1,*`.
+- Steps larger than the field, such as `*/60` in the minute field.
+
+## Handle the event
+
+The `scheduled` handler receives a `controller` object. If you have more than one schedule, then use `controller.cron` to select the job:
+
+```js index.js
+export default {
+  async scheduled(controller, env, ctx) {
+    switch (controller.cron) {
+      case "0 2 * * *":
+        return cleanup(env, controller.scheduledTime);
+      case "0 9 * * MON-FRI":
+        return enqueueDigests(env, controller.scheduledTime);
+    }
+  },
+};
+```
+
+The `controller` object has the following members:
+
+- `cron`: the expression text, exactly as it appears in the `wrangler.json` file.
+- `scheduledTime`: the scheduled minute, in milliseconds. It doesn't change on a retry, so you can use it as the job ID.
+- `noRetry()`: stops retries for this occurrence.
+
+## Retries and missed runs
+
+celld runs scheduled handlers with the following behavior:
+
+- One node runs each occurrence.
+- Handlers of one App don't overlap. A slow run delays the next run.
+- If the handler throws, then celld retries it after 4 seconds, and doubles the delay each time, for a maximum of six attempts. Retries stop at the next occurrence. A restart removes a pending retry.
+- After downtime, only the last missed occurrence runs.
+
+Because a retry runs the full handler again, make each job idempotent.
+
+If every interval matters, then keep a high-water mark, such as a `last_processed_at` value, in [D1](/build/storage/d1) or [KV](/build/storage/kv). In each run, process the records from that mark to `scheduledTime`, and then advance the mark.
+
+## Keep the handler short
+
+We recommend that the cron handler start the work and leave the slow parts to other features. Use the following patterns:
+
+- For many records or slow calls, let the handler select IDs and send them to a queue. For more information, see [Queues](/build/background/queues).
+- For processes with many steps or long waits, start a Workflow from the handler. For more information, see [Workflows](/build/background/workflows).
+- For a timer that belongs to one object, use a Durable Object alarm or a queue message with `delaySeconds` instead of a Cron Trigger. For more information, see [Durable Objects](/build/storage/durable-objects).
+
+## Test a scheduled job
+
+The dev server runs Cron Triggers on their schedule, but you can't start one manually. To test a job, put it in a function, and call that function from a temporary route:
+
+```js index.js
+// TEMPORARY: remove this route after the test.
+if (url.pathname === "/__dev/cleanup") {
+  return Response.json(await cleanup(env, Date.now()));
+}
+```
+
+Call the route on the dev server, check the result and the dev log, and then remove the route. For more information, see [Test on the dev server](/build/dev-server).
+
+## Limits
+
+The following table lists the limits of Cron Triggers:
+
+| Item | Limit |
+|---|---|
+| Resolution | One minute |
+| Attempts for one occurrence | Six |
+| First retry delay | 4 seconds, doubled for each retry |
+
+## Differences from Cloudflare
+
+Keep the following celld behavior in mind when you port a Cron Trigger from Cloudflare:
+
+- The only configuration key is `triggers.crons`.
+- After downtime, only the last missed occurrence runs. If you need every interval, keep a high-water mark.
+- A restart of celld removes a pending retry.
+- The dev server has no way to start a Cron Trigger manually. Call the job function from a temporary route.

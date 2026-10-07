@@ -1,0 +1,148 @@
+---
+title: "Workflows"
+description: "Run a durable process that has steps, sleeps, and waits for events."
+---
+A Workflow is a durable process made of steps. celld, the judt runtime, saves the result of each step. When an instance continues after a sleep, a crash, or a deploy, finished steps return their saved results and don't run again. Steps can sleep for days and wait for external events. Use Workflows for onboarding, payments, approvals, and long imports.
+
+## Configure
+
+Add a `workflows` array to the `wrangler.json` file:
+
+```json wrangler.json
+{
+  "workflows": [
+    { "name": "onboarding", "binding": "ONBOARDING", "class_name": "Onboarding" }
+  ]
+}
+```
+
+An entry accepts the `name`, `binding`, and `class_name` keys. Deploy refuses the `schedules`, `limits`, and `script_name` keys.
+
+A Workflow needs a `main` entry module. Export the Workflow class from the `index.js` file.
+
+## Define a Workflow
+
+A Workflow class extends `WorkflowEntrypoint` and implements a `run` method. The following example sends a welcome email and waits one day. Then it waits up to seven days for the user to verify their email address:
+
+```js index.js
+import { WorkflowEntrypoint } from "cloudflare:workers";
+import { NonRetryableError } from "cloudflare:workflows";
+
+export class Onboarding extends WorkflowEntrypoint {
+  async run(event, step) {
+    const { userId } = event.payload;
+
+    const user = await step.do("load user", async () => {
+      const row = await this.env.DB
+        .prepare("SELECT id, email FROM users WHERE id = ?")
+        .bind(userId)
+        .first();
+      if (!row) throw new NonRetryableError(`user ${userId} not found`);
+      return row;
+    });
+
+    await step.do(
+      "send welcome",
+      { retries: { limit: 5, delay: "30 seconds", backoff: "exponential" }, timeout: "2 minutes" },
+      () => sendEmail(this.env, user.email, "welcome", `${event.instanceId}:welcome`),
+    );
+
+    await step.sleep("wait one day", "1 day");
+
+    // A timeout rejects, so map both outcomes to a boolean.
+    const verified = await step
+      .waitForEvent("email verified", { type: "email-verified", timeout: "7 days" })
+      .then(() => true, () => false);
+
+    await step.do("follow up", () =>
+      sendEmail(this.env, user.email, verified ? "tips" : "reminder", `${event.instanceId}:followup`),
+    );
+  }
+}
+```
+
+Inside the `run` method, the following values are available:
+
+- `this.env`: the bindings of your App.
+- `event.payload`: the parameters passed when the instance was created.
+- `event.instanceId`: the ID of the instance.
+
+The `step` object has the following methods:
+
+- `step.do(name, config, callback)`: runs the callback and saves its result. The `config` argument is optional. By default, a step gets five retries with a 10-second delay and exponential backoff, and each attempt has a 10-minute timeout.
+- `step.sleep(name, duration)`: pauses the instance for a duration, such as `"1 day"`.
+- `step.sleepUntil(name, date)`: pauses the instance until a date.
+- `step.waitForEvent(name, { type, timeout })`: waits until something calls `instance.sendEvent({ type, payload })` with a matching `type`. The default timeout is 24 hours. A timeout rejects the promise.
+
+To stop the retries of a step at once, throw a `NonRetryableError` from the step callback.
+
+## Write replay-safe steps
+
+The `run` method starts again from the top each time an instance continues. Finished steps return their saved results, but code outside steps runs again on each replay. Follow these rules:
+
+- Put each side effect and each value that changes inside a `step.do` call. This includes network calls, writes, emails, `Date.now()`, `crypto.randomUUID()`, and `Math.random()`.
+- Use stable step names. Don't put times or random values in names. In a loop, put the item ID in the step name.
+- Make each step callback idempotent, because a callback can run more than one time. Send `${event.instanceId}:STEP_NAME` as an idempotency key to external services, where `STEP_NAME` is the name of the step.
+- Return results that are serializable and no larger than 1 MiB. A step can't return a `ReadableStream`. Keep large data in [R2](/build/storage/r2) and return the key.
+- An `await` outside a step must finish within 60 seconds. For long waits, use `step.sleep` or `step.waitForEvent`.
+- celld doesn't roll back finished steps. Write each compensation, such as a refund, as its own step in a `try...catch` block.
+
+## Manage instances
+
+Create an instance with the binding, and get it again by its ID:
+
+```js
+const instance = await env.ONBOARDING.create({
+  id: `onboarding-${userId}`,
+  params: { userId },
+});
+
+const same = await env.ONBOARDING.get(`onboarding-${userId}`);
+const { status, output, error } = await same.status();
+
+await same.sendEvent({ type: "email-verified", payload: { at: Date.now() } });
+
+await same.pause();
+await same.resume();
+await same.terminate();
+await same.restart();
+
+await env.ONBOARDING.createBatch([{ id, params }]);
+```
+
+We recommend that you give instances IDs that you can derive again, such as `onboarding-${userId}`. A webhook route can then get the instance and send it an event.
+
+Calling `create` with an ID that already exists throws. This behavior prevents duplicate runs.
+
+The `output` value returned by the `status` method is the return value of the `run` method.
+
+## Choose between Workflows and other tools
+
+The following table compares Workflows with the other background features:
+
+| Need | Use |
+|---|---|
+| One job with retries | [Queues](/build/background/queues) |
+| A schedule | [Cron Triggers](/build/background/cron-triggers). A cron run can create a Workflow instance. |
+| A timer for one object, with the state in that object | A [Durable Object](/build/storage/durable-objects) alarm |
+| An interactive AI agent | A Durable Object. For more information, see [Build an AI agent loop](/build/advanced/agent-loop). |
+| Steps, long waits, external events, and status for each instance | A Workflow |
+
+## Limits
+
+The following table lists the limits of Workflows:
+
+| Item | Limit |
+|---|---|
+| Step result size | 1 MiB |
+| An `await` outside a step | 60 seconds |
+| Retention of finished instances | 30 days |
+
+## Differences from Cloudflare
+
+Keep the following celld behavior in mind when you port a Workflow from Cloudflare:
+
+- Deploy refuses the `schedules`, `limits`, and `script_name` keys.
+- A step can't return a `ReadableStream`.
+- There's no REST API or CLI for Workflow instances. To let people see instances, add an administrator route to your App that calls the `get` and `status` methods.
+- celld keeps finished instances for 30 days.

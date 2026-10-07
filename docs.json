@@ -14,79 +14,189 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Documentation",
+        "tab": "Manage Apps",
         "groups": [
           {
-            "group": "Get Started",
+            "group": "Get started",
             "pages": [
-              "introduction",
-              "quickstart",
-              "authentication"
+              "manage/introduction",
+              "manage/quickstart",
+              "manage/authentication"
             ]
           },
           {
-            "group": "Core Concepts",
+            "group": "Concepts",
             "pages": [
-              "concepts/tools",
-              "concepts/agents",
-              "concepts/apps"
+              "manage/concepts/apps",
+              "manage/concepts/sandbox",
+              "manage/concepts/deployments",
+              "manage/concepts/secrets",
+              "manage/concepts/previews",
+              "manage/concepts/retries",
+              "manage/concepts/errors"
+            ]
+          },
+          {
+            "group": "Interfaces",
+            "pages": [
+              "manage/interfaces/api",
+              "manage/interfaces/mcp",
+              "manage/interfaces/agent"
             ]
           },
           {
             "group": "Guides",
             "pages": [
-              "guides/integrating-tools",
-              "guides/configuring-agents",
-              "guides/managing-apps"
+              "manage/guides/agent-access",
+              "manage/guides/publish",
+              "manage/guides/troubleshoot"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Build Apps",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "build/introduction",
+              "build/app-contract",
+              "build/cloudflare-differences",
+              "build/dev-server"
             ]
           },
           {
-            "group": "Configuration",
+            "group": "Project",
             "pages": [
-              "configuration/settings",
-              "configuration/environment"
+              "build/wrangler-json",
+              "build/npm-and-builds",
+              "build/static-assets",
+              "build/vars-and-secrets"
             ]
           },
           {
-            "group": "Support",
+            "group": "Storage",
             "pages": [
-              "troubleshooting",
-              "changelog"
+              "build/storage/durable-objects",
+              "build/storage/d1",
+              "build/storage/kv",
+              "build/storage/r2"
+            ]
+          },
+          {
+            "group": "Background work",
+            "pages": [
+              "build/background/queues",
+              "build/background/cron-triggers",
+              "build/background/workflows"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "build/advanced/dynamic-workers",
+              "build/advanced/facets",
+              "build/advanced/agent-loop"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "build/reference/runtime"
             ]
           }
         ]
       },
       {
         "tab": "API Reference",
+        "openapi": "api-reference/openapi.json",
         "groups": [
           {
             "group": "Overview",
             "pages": [
-              "api-reference/overview",
-              "api-reference/authentication"
-            ]
-          },
-          {
-            "group": "Tools",
-            "pages": [
-              "api-reference/tools/list",
-              "api-reference/tools/invoke",
-              "api-reference/tools/configure"
-            ]
-          },
-          {
-            "group": "Agents",
-            "pages": [
-              "api-reference/agents/create",
-              "api-reference/agents/get",
-              "api-reference/agents/update"
+              "api-reference/introduction"
             ]
           },
           {
             "group": "Apps",
             "pages": [
-              "api-reference/apps/list",
-              "api-reference/apps/create"
+              "POST /api/apps",
+              "GET /api/apps",
+              "GET /api/apps/{id}",
+              "PATCH /api/apps/{id}",
+              "DELETE /api/apps/{id}",
+              "POST /api/apps/{id}/access"
+            ]
+          },
+          {
+            "group": "Secrets",
+            "pages": [
+              "GET /api/apps/{id}/secrets",
+              "PUT /api/apps/{id}/secrets",
+              "GET /api/apps/{id}/secrets/{secret}",
+              "PUT /api/apps/{id}/secrets/{secret}",
+              "DELETE /api/apps/{id}/secrets/{secret}"
+            ]
+          },
+          {
+            "group": "Files",
+            "pages": [
+              "GET /api/apps/{id}/files",
+              "GET /api/apps/{id}/files/{path}",
+              "PUT /api/apps/{id}/files/{path}",
+              "DELETE /api/apps/{id}/files/{path}"
+            ]
+          },
+          {
+            "group": "Sandbox",
+            "pages": [
+              "POST /api/apps/{id}/command",
+              "GET /api/apps/{id}/git",
+              "POST /api/apps/{id}/commits",
+              "GET /api/apps/{id}/commits",
+              "POST /api/apps/{id}/restore",
+              "POST /api/apps/{id}/preview",
+              "POST /api/apps/{id}/stop"
+            ]
+          },
+          {
+            "group": "Deployments",
+            "pages": [
+              "POST /api/apps/{id}/deployments",
+              "GET /api/apps/{id}/deployments",
+              "GET /api/apps/{id}/deployments/{deployment_id}",
+              "POST /api/apps/{id}/unpublish"
+            ]
+          },
+          {
+            "group": "Monitoring",
+            "pages": [
+              "GET /api/apps/{id}/events",
+              "GET /api/apps/{id}/logs"
+            ]
+          },
+          {
+            "group": "Templates",
+            "pages": [
+              "GET /api/templates"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "GET /api/models",
+              "POST /api/apps/{id}/sessions",
+              "GET /api/apps/{id}/sessions",
+              "GET /api/apps/{id}/sessions/{session_id}",
+              "PATCH /api/apps/{id}/sessions/{session_id}",
+              "DELETE /api/apps/{id}/sessions/{session_id}",
+              "POST /api/apps/{id}/sessions/{session_id}/turns",
+              "GET /api/apps/{id}/sessions/{session_id}/turns",
+              "GET /api/apps/{id}/sessions/{session_id}/turns/{turn_id}",
+              "POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/cancel",
+              "POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/decline",
+              "GET /api/apps/{id}/sessions/{session_id}/events"
             ]
           }
         ]

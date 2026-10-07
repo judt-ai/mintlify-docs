@@ -1,0 +1,185 @@
+---
+title: "D1"
+description: "Store relational data, and change its schema with migrations."
+---
+D1 is a SQLite database that the whole App shares. Use it for relational data that you query across many entities, such as users, orders, and posts, and for full-text search with FTS5. For the state of one entity that needs coordination or realtime updates, use a [Durable Object](/build/storage/durable-objects).
+
+celld, the judt runtime, implements the Cloudflare D1 API. judt applies your migration files at deploy. This page explains how, and lists each place where celld is different from Cloudflare.
+
+## Configure the binding
+
+To add a database, declare it in the `wrangler.json` file:
+
+```json wrangler.json
+{ "d1_databases": [{ "binding": "DB", "database_name": "main" }] }
+```
+
+The following table describes the keys of a `d1_databases` entry:
+
+| Key | Required | Description |
+|---|---|---|
+| `binding` | Yes | The name of the binding in your code, for example `env.DB`. |
+| `database_name` | Yes | The name of the database. |
+| `database_id` | No | The identity of the database. If you set it, celld identifies the database by this value instead of by `database_name`. |
+| `migrations_dir` | No | The directory of migration files. The default is `migrations`. |
+| `migrations_table` | No | The table that records applied migrations. The default is `d1_migrations`. |
+
+You don't provision the database. celld creates it on first use.
+
+Each database has one writer. If one database receives too many writes, split the data across more databases.
+
+<Warning>
+Don't change `database_name` after data exists, and don't add, change, or remove `database_id`. A different identity opens an empty database, and the data stays under the old identity.
+</Warning>
+
+## Write migrations
+
+Put each schema change in a SQL file in the `migrations/` directory:
+
+```text
+migrations/0001_create_users.sql
+migrations/0002_add_users_plan.sql
+```
+
+Migration files follow these rules:
+
+- Use flat files named `NNNN_description.sql`, directly in the migrations directory. Files run in name order, so the zero-padded number sets the order.
+- Each file runs in its own transaction. Don't write `BEGIN` or `COMMIT` statements in a migration. A `CREATE TRIGGER ... BEGIN ... END` statement is permitted.
+- Don't change a migration after a deploy. To change the schema again, add another file.
+
+### How judt applies migrations at deploy
+
+judt applies pending migrations for each database when you deploy. The timing depends on whether the live version of the App already uses the database:
+
+- **A database that the live version uses**: migrations run before the deployed code goes live. If a migration fails, then the deploy stops with the `migration_failed` error (HTTP `422`). Nothing is published, and the live version keeps serving.
+- **A database that the live version doesn't use**: migrations run after the deployed code goes live. For a few seconds, the deployed code can see an empty database. If a migration fails, then the deployed version stays live and the deployment reports `migration_failed`.
+
+If the App isn't published, then there is no live version, and all migrations run after the code goes live.
+
+For more information about deploys, see [Deployments](/manage/concepts/deployments).
+
+### Keep migrations additive
+
+For a short time during a deploy, the old code runs on the migrated schema. Make each migration additive, for example by adding tables, columns, or indexes.
+
+To remove or rename a column, use two deploys:
+
+1. Deploy code that no longer reads the column.
+1. Deploy a migration that removes the column.
+
+### Test migrations on the dev server
+
+The dev server doesn't apply migrations. To test D1 code, run the same SQL one time from a temporary route, and then remove the route:
+
+```js index.js
+// TEMPORARY: remove after one call
+if (url.pathname === "/__dev/migrate") {
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);`);
+  return new Response("ok");
+}
+```
+
+For more information, see [Test on the dev server](/build/dev-server).
+
+## Query the database
+
+The following examples show each way to run a prepared statement:
+
+```js
+// One row, or null
+const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ?").bind(email).first();
+
+// All rows
+const { results } = await env.DB.prepare("SELECT id, title FROM posts WHERE author_id = ? LIMIT ?").bind(userId, 20).all();
+
+// A write: meta.changes and meta.last_row_id
+const { meta } = await env.DB.prepare("INSERT INTO posts (id, title) VALUES (?, ?)").bind(id, title).run();
+
+// One column of the first row
+const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM posts").first("n");
+
+// Rows as arrays
+const rows = await env.DB.prepare("SELECT id, title FROM posts").raw();
+```
+
+Follow these rules when you query:
+
+- Always bind values with `?` or `?NNN` placeholders. Don't put user input into the SQL text.
+- The `prepare` method accepts one statement only. To run more than one statement, use the `batch` or `exec` method.
+- `RETURNING` clauses work with the `first` and `all` methods.
+- To page through large results, use keyset pagination, for example `WHERE id > ? ORDER BY id LIMIT ?`.
+- Store times as integers (`Date.now()`) and booleans as `0` or `1`. JSON functions work on TEXT columns.
+- Foreign keys apply only after `PRAGMA foreign_keys = ON`.
+
+### Bind types
+
+The following table shows how JavaScript values bind to SQL:
+
+| JavaScript value | SQL value |
+|---|---|
+| Number or string | The same value |
+| Boolean | `1` or `0` |
+| `null` | NULL |
+| `ArrayBuffer` or typed array | BLOB |
+| `undefined` | Throws `D1_TYPE_ERROR` |
+
+For an optional value, bind `value ?? null`.
+
+## Run statements in a transaction
+
+Application SQL can't use `BEGIN`, `COMMIT`, `ROLLBACK`, or `SAVEPOINT`. Instead, use the `batch` method. It runs all of its statements in one transaction and one round trip:
+
+```js
+await env.DB.batch([
+  env.DB.prepare("UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?").bind(amount, from, amount),
+  env.DB.prepare("UPDATE accounts SET balance = balance + ? WHERE id = ?").bind(amount, to),
+]);
+```
+
+A statement in a batch can't use the result of an earlier statement. Put the condition in the SQL instead, with `WHERE`, `ON CONFLICT DO NOTHING`, `CHECK`, or `UNIQUE`. For read-then-write logic, use a Durable Object.
+
+Each `run` call is one round trip. To reduce round trips, put related statements in one batch.
+
+## Search with full-text search
+
+D1 supports FTS5. Create the virtual table and a trigger that keeps it in sync in a migration:
+
+```sql migrations/0003_posts_fts.sql
+CREATE VIRTUAL TABLE posts_fts USING fts5(title, body, content='posts', content_rowid='rowid');
+CREATE TRIGGER posts_ai AFTER INSERT ON posts BEGIN
+  INSERT INTO posts_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+END;
+```
+
+Then query the index with `MATCH`:
+
+```js
+const { results } = await env.DB.prepare(
+  "SELECT p.* FROM posts_fts f JOIN posts p ON p.rowid = f.rowid WHERE posts_fts MATCH ? LIMIT 20"
+).bind(q).all();
+```
+
+## Limits
+
+The following table lists the limits for D1 on celld:
+
+| Item | Limit |
+|---|---|
+| Bound parameters in one statement | 100 |
+| Rows in one result | 100,000 |
+| Size of one result | 32 MiB |
+| Size of one statement | 100,000 bytes |
+| Size of one row, string, or BLOB | About 2.2 MB |
+
+Keep large data in [R2](/build/storage/r2).
+
+## Differences from Cloudflare
+
+celld differs from Cloudflare D1 in the following ways:
+
+- judt applies migrations at deploy, before or after the code goes live. The dev server doesn't apply them.
+- celld refuses `ATTACH`, `DETACH`, `VACUUM`, `load_extension()`, and `TEMP` objects. FTS5 works, and the D1 PRAGMA list applies.
+- The `dump` method throws.
+- There is no Time Travel and no REST API.
+- There are no read replicas. The `withSession` method always uses the primary, and each read sees all committed writes.
+- A write is durable before the call returns.
