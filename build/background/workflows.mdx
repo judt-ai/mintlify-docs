@@ -1,6 +1,6 @@
 ---
 title: "Workflows"
-description: "Run a durable process that has steps, sleeps, and waits for events."
+description: "Run a durable process made of steps with Workflows. celld saves each step's result, so instances continue after a sleep, a crash, or a deploy."
 ---
 A Workflow is a durable process made of steps. celld, the judt runtime, saves the result of each step. When an instance continues after a sleep, a crash, or a deploy, finished steps return their saved results and don't run again. Steps can sleep for days and wait for external events. Use Workflows for onboarding, payments, approvals, and long imports.
 

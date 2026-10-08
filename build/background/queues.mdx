@@ -1,6 +1,6 @@
 ---
 title: "Queues"
-description: "Run background jobs, fan out work, and retry failed messages."
+description: "Move work out of the request with queues: send messages from a producer, consume batches in the queue handler, and use retries and dead-letter queues."
 ---
 A queue moves work out of the request. A producer sends messages, and the `queue` handler of your App receives them in batches, with retries and an optional dead-letter queue. Use a queue for email, webhooks, upload processing, and fan-out.
 

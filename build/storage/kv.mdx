@@ -1,6 +1,6 @@
 ---
 title: "KV"
-description: "Read and write values by key, with an optional expiration time."
+description: "Store values by key in KV with optional expiry and metadata. KV is strongly consistent on celld, so use it for sessions, settings, and cached API responses."
 ---
 KV stores values by string key, with an optional expiry and optional metadata. Use it for sessions, settings, feature flags, tokens, and cached API responses. The Cache API always misses on celld, the judt runtime, so use KV as your cache.
 
