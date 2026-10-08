@@ -21,6 +21,7 @@
             "pages": [
               "manage/introduction",
               "manage/quickstart",
+              "manage/get-started-api",
               "manage/authentication"
             ]
           },
