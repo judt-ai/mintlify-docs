@@ -22,6 +22,7 @@
               "manage/introduction",
               "manage/quickstart",
               "manage/get-started-api",
+              "manage/get-started-mcp",
               "manage/authentication"
             ]
           },
