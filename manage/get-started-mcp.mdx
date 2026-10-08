@@ -7,3 +7,212 @@ description: "Create an API key, connect your agent to the judt MCP server, and 
 This guide shows how to connect an agent to judt through the Model Context Protocol (MCP). You create an API key, add the judt MCP server to your MCP client, and then give the agent a task.
 
 The MCP server is at `https://api.judt.ai/mcp`. Each tool call is one judt API request, with the same authentication, validation, and errors.
+
+## Before you begin
+
+You need the following:
+
+- A judt account. To sign in, go to [judt.ai](https://judt.ai/apps).
+- An MCP client that uses the Streamable HTTP transport and can send an `Authorization` header. Claude Code, Codex, Cursor, and Visual Studio Code can do this.
+
+The MCP server accepts API keys only. A client that can't send an `Authorization` header can't connect.
+
+## Create an API key
+
+The agent uses the API key for each tool call. Select the scope of the key before you create it:
+
+- To let the agent work on one App, select that App. The agent can't get access to other Apps. We recommend this scope for agents.
+- To let the agent create Apps, select **All apps**. The agent can then get access to each App in the organization.
+
+<Steps>
+  <Step title="Open the API keys page">
+    In the judt dashboard, click **API keys**.
+  </Step>
+  <Step title="Start a new key">
+    Click **Create key**. If the organization has no keys, click **Create your first key**.
+  </Step>
+  <Step title="Set the key properties">
+    Set the following fields:
+
+    - **Name**: the name of the agent, such as `Claude Code`.
+    - **App**: select one App, or select **All apps**.
+    - **Expires**: select the time after which the key stops working.
+
+    Click **Create key**.
+  </Step>
+  <Step title="Copy the key">
+    Click **Copy**, and then click **Done**.
+
+    <Warning>
+      The dashboard shows the key one time only. If you lose the key, revoke it and create a new key.
+    </Warning>
+  </Step>
+</Steps>
+
+An API key starts with `judt_`. For more information about keys and scopes, see [Authenticate with API tokens](/manage/authentication).
+
+## Store the key
+
+Keep the key out of your shell history and out of your source files. Put the key in an environment variable:
+
+```bash
+read -rs JUDT_API_KEY && export JUDT_API_KEY
+```
+
+The command waits for input. Paste the key, and then press **Enter**. The terminal doesn't show the key.
+
+The Codex configuration reads the key from this variable when Codex starts. Start Codex from the same shell, or set the variable in your shell profile.
+
+## Add the server to your client
+
+Select your MCP client, and then do the steps.
+
+<Tabs>
+  <Tab title="Claude Code">
+    Add the server:
+
+    ```bash
+    claude mcp add --transport http judt https://api.judt.ai/mcp --header "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    The command writes the key into the Claude Code configuration. To make sure that the server is connected, start Claude Code and enter `/mcp`. The `judt` server has the status **connected**.
+  </Tab>
+  <Tab title="Codex">
+    Add the following lines to the `~/.codex/config.toml` file:
+
+    ```toml ~/.codex/config.toml
+    [mcp_servers.judt]
+    url = "https://api.judt.ai/mcp"
+    bearer_token_env_var = "JUDT_API_KEY"
+    ```
+
+    Start Codex again.
+  </Tab>
+  <Tab title="Cursor">
+    Add the `judt` server to the `~/.cursor/mcp.json` file:
+
+    ```json ~/.cursor/mcp.json
+    {
+      "mcpServers": {
+        "judt": {
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer JUDT_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+
+    Replace `JUDT_API_KEY` with your API key. Keep this file in your home directory. Do not add the key to a project file.
+
+    Start Cursor again. In **Cursor Settings**, open **MCP** and make sure that the `judt` server is enabled.
+  </Tab>
+  <Tab title="VS Code">
+    Add the `judt` server to the `.vscode/mcp.json` file in your workspace:
+
+    ```json .vscode/mcp.json
+    {
+      "inputs": [
+        {
+          "type": "promptString",
+          "id": "judt-api-key",
+          "description": "judt API key",
+          "password": true
+        }
+      ],
+      "servers": {
+        "judt": {
+          "type": "http",
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer ${input:judt-api-key}"
+          }
+        }
+      }
+    }
+    ```
+
+    When the server starts for the first time, VS Code asks for the key. Paste the key. VS Code keeps the key in its secret storage, not in the file.
+  </Tab>
+  <Tab title="Other clients">
+    Configure the server with these values:
+
+    - **Transport**: Streamable HTTP
+    - **URL**: `https://api.judt.ai/mcp`
+    - **Header**: `Authorization: Bearer JUDT_API_KEY`
+
+    Replace `JUDT_API_KEY` with your API key. The server supports the MCP versions `2026-07-28` and `2025-11-25`.
+  </Tab>
+</Tabs>
+
+## Make sure that the connection works
+
+Send this message to the agent:
+
+```text
+List my judt Apps.
+```
+
+The agent calls the `list_apps` tool and shows your Apps. If the organization has no Apps, the list is empty.
+
+If the tool call fails with the code `unauthenticated`, then the key is incorrect, expired, or revoked. Create a new key, and then update the client configuration.
+
+## Give the agent a task
+
+The MCP server gives the agent short instructions and a description for each tool. The following prompt adds a procedure and rules. Use it at the start of each new task.
+
+Copy the prompt to your agent. Replace `TASK` with what you want the agent to do, such as `Create an App that shows the time in UTC, and then publish it.`
+
+```text Agent prompt
+You manage judt Apps with the judt MCP server. Do the task at the end of this prompt.
+
+Procedure:
+1. Find the App with list_apps. If the task needs a new App, create it with create_app.
+2. Read the files before you change them. Use list_files and read_file.
+3. Write each changed file with write_file.
+4. Test the change in the sandbox. Run commands with run_command. Get a preview URL with create_preview.
+5. Commit the change with create_commit. Write a one-line message that tells what changed.
+6. Publish the commit with deploy only if the task tells you to publish.
+7. Tell me the App URL, the commit SHA, and the deployment status.
+
+Rules:
+- The App is a Workers-style JavaScript app. The wrangler.json file sets the entry module.
+- Give each tool call that changes something an idempotency_key. Use a new key for each new operation.
+- If a tool call fails with status 504, call the same tool again with the same idempotency_key.
+- If a tool call fails, read the error code and the error message. Correct the cause before you try again.
+- Before you write over a file that you read, send its etag as if_match.
+- Do not call set_secret. Tell me the name of each Secret that the App needs, and I will set the value.
+- Do not delete an App, a file, or a Secret unless the task tells you to.
+
+Task:
+TASK
+```
+
+<Warning>
+  The `set_secret` tool sends the value of the Secret through the model. Set Secrets in the dashboard or with the API. For more information, see [Secrets](/manage/concepts/secrets).
+</Warning>
+
+## Tools
+
+The MCP server has the following tools:
+
+| Group | Tools |
+| --- | --- |
+| Agent sessions | `list_models`, `create_session`, `list_sessions`, `update_session`, `delete_session`, `create_turn`, `list_turns`, `cancel_turn`, `decline_input`, `list_session_events` |
+| Apps | `list_apps`, `create_app`, `update_app`, `delete_app`, `create_access_token` |
+| Deployments | `deploy`, `list_deployments`, `unpublish_app` |
+| Files | `list_files`, `read_file`, `write_file`, `delete_file` |
+| Monitoring | `list_events`, `list_logs` |
+| Sandbox | `run_command`, `create_preview`, `create_commit`, `list_commits`, `restore_commit` |
+| Secrets | `list_secrets`, `set_secret` |
+| Templates | `list_templates` |
+
+A `list_` tool also gets one item when you give it the ID of the item. Each tool takes the parameters of its API endpoint. For the parameters, see the [API reference](/api-reference/introduction).
+
+## Next steps
+
+- To limit an agent to one App, see [Give an agent access to an App](/manage/guides/agent-access).
+- To see what happened to an App, see [Troubleshoot an App](/manage/guides/troubleshoot).
+- To write App code, see [Build Apps](/build/introduction).
+- To call the API without MCP, see [Get started with the judt API](/manage/get-started-api).
