@@ -48,6 +48,7 @@
             "group": "Guides",
             "pages": [
               "manage/guides/agent-access",
+              "manage/guides/personal-agents",
               "manage/guides/publish",
               "manage/guides/troubleshoot"
             ]

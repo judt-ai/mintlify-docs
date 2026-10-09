@@ -1,0 +1,135 @@
+---
+title: "Connect a personal agent"
+sidebarTitle: "Connect a personal agent"
+description: "Let a personal agent or an MCP client act for you on judt, with a browser or device sign-in instead of an API token."
+---
+
+A personal agent can manage your Apps for you without an API token. You sign in to judt once, choose an organization and the access to give, and the agent works through the judt API or the MCP server from then on. judt supports this in two ways:
+
+- **MCP clients** such as claude.ai, ChatGPT, Claude Code, VS Code, and Cursor connect to the MCP server with an OAuth sign-in.
+- **Personal agents** that implement the [Personal Agent Protocol](https://personalagentprotocol.org/docs/spec) (Poppy), draft 0.1, find judt on their own and sign you in.
+
+If you're connecting an agent that you use, read the first three sections. If you're building a personal agent, read [Integrate a personal agent](#integrate-a-personal-agent).
+
+## Connect an MCP client
+
+To connect an MCP client, do the following:
+
+1. In the client, add an MCP server with the URL `https://api.judt.ai/mcp`. Don't set a token or an `Authorization` header.
+2. When the client opens a judt page, log in.
+3. If you belong to more than one organization, choose the one that the client may use.
+4. Choose the access to give, and then click **Allow**.
+
+The browser returns to the client, and the client stays connected until you disconnect it. A connection reaches one organization. To use another one, connect the client again and choose that organization.
+
+A client that can't sign in with OAuth can still use an API token. For more information, see [MCP server](/manage/interfaces/mcp).
+
+## Choose what an agent can do
+
+When you approve a sign-in, you choose one or both of the following kinds of access:
+
+| Access | What the agent can do |
+| --- | --- |
+| `poppy:read` | See your Apps, their files, deployments, and logs. |
+| `poppy:write` | Change your Apps: edit files, run commands, deploy, and manage Secrets. |
+
+Your role in the organization still applies. An agent can't do anything that you can't do, and judt checks both your role and the agent's access on every request.
+
+## Disconnect an agent
+
+To disconnect an agent, go to the **API keys** page in the dashboard. In **Connected agents**, find the agent, and then click **Disconnect**. The agent loses access on its next request.
+
+Resetting your password disconnects every agent in every organization, as it signs out your other sessions.
+
+## Integrate a personal agent
+
+judt is a Company in the Personal Agent Protocol, draft 0.1. This section lists what judt supports and the details that the specification leaves to each Company. It assumes that you know the specification.
+
+### Discovery
+
+judt publishes its discovery document at `https://judt.ai/.well-known/poppy.json`:
+
+```json poppy.json
+{
+  "protocol_version": "0.1",
+  "organization": { "name": "judt", "domain": "judt.ai" },
+  "auth": {
+    "issuer": "https://judt.ai",
+    "direct": { "scopes": ["poppy:read", "poppy:write"] },
+    "device": { "scopes": ["poppy:read", "poppy:write"] }
+  },
+  "apis": [
+    { "type": "openapi", "url": "https://api.judt.ai/api/openapi.json", "description": "Apps: files, commits, previews, deployments, secrets, and logs" },
+    { "type": "mcp", "url": "https://api.judt.ai/mcp", "description": "The same operations as MCP tools" }
+  ],
+  "web": {}
+}
+```
+
+The issuer's metadata is at `https://judt.ai/.well-known/oauth-authorization-server`, and its `poppy_domains` is `["judt.ai"]`. It names the following endpoints:
+
+| Endpoint | URL |
+| --- | --- |
+| Token | `https://judt.ai/api/auth/oauth2/token` |
+| Revocation | `https://judt.ai/api/auth/oauth2/revoke` |
+| Authorization | `https://judt.ai/api/auth/oauth2/authorize` |
+| Device authorization | `https://judt.ai/api/auth/device/code` |
+
+### Agent identity
+
+judt doesn't require registration. It fetches your client metadata document from your `client_id` URL when it first sees it, and fetches your keys from `jwks_uri`. The document must set `token_endpoint_auth_method` to `private_key_jwt`.
+
+A client assertion's `aud` can be the issuer, `https://judt.ai`, at every endpoint. The token endpoint also accepts its own URL, but the device authorization and revocation endpoints don't. We recommend that you use the issuer everywhere.
+
+### Sessions
+
+Start and renew Sessions with the JWT bearer grant, as the specification describes. judt's Session IDs start with `psn_`.
+
+Sessions work as follows at judt:
+
+- **Signed out**: a signed-out Session can't call the API or the MCP server. Every request returns `403` with `sign_in_required`, so sign the User in before you call either one.
+- **Session Tokens**: a Session Token lasts one hour. judt checks the Session on every request, so a sign-out takes effect on the next one.
+- **Lifetime**: a Session that isn't used for 30 days ends. Renewing it then returns `invalid_session`.
+- **Rate limit**: one `client_id` can start 60 Sessions a minute. More return `429` with `rate_limited` and a `Retry-After` header.
+
+judt doesn't require DPoP nonces.
+
+### Sign-in
+
+judt supports Direct Sign-In and Device Sign-In. It doesn't offer Mediated Sign-In. Both types can grant `poppy:read` and `poppy:write`, and the User may approve only some of the scopes that you request, so check `scope` in the response.
+
+An account at judt is a user in one organization. The User chooses the organization during sign-in. A User who connects your agent to two organizations has two Account Tokens, and needs a separate Session for each.
+
+Account Tokens work as follows:
+
+- An Account Token lasts 30 days from sign-in. Using it doesn't extend it.
+- judt doesn't rotate Account Tokens. A refresh doesn't return a new `refresh_token`.
+- Several Sessions can use the same Account Token at once, and each Session can use its own DPoP key.
+
+### API and MCP calls
+
+A DPoP Session Token works at the API. For the MCP server, request a Bearer token: send the renewal request without a `DPoP` header and with `resource=https://api.judt.ai/mcp`. A Bearer token works only at the MCP server.
+
+When a token can't make a request, the `WWW-Authenticate` header names the error:
+
+| Status | Error | What to do |
+| --- | --- | --- |
+| 401 | `invalid_token` | Get a new Session Token. |
+| 401 | `invalid_dpop_proof` | Send a new DPoP proof for this request's method and URL, signed with the token's key. |
+| 403 | `sign_in_required` | Use the Account Token, or sign the User in, and then retry. |
+| 403 | `insufficient_scope` | Sign the User in again with the scope that the header names. |
+
+The response body carries the same JSON error as other API errors. For more information, see [Errors](/manage/concepts/errors).
+
+### Sign-out
+
+Revoke the Account Token at the revocation endpoint. Every Session that it signed in continues signed out.
+
+### Limitations
+
+judt doesn't support the following parts of the specification:
+
+- Mediated Sign-In.
+- Web browsing in a Session. `poppy.json` has no `web.browser_session_endpoint`, so your agent browses judt.ai as a signed-out visitor.
+- Conversations with a Company Agent. `poppy.json` has no `agent`.
+- Extensions.
