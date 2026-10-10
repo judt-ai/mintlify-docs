@@ -6,3 +6,13 @@ description: "The base URL, authentication, and conventions of the judt API."
 This tab documents each endpoint of the judt API. The base URL is `https://api.judt.ai`.
 
 For how the API fits with the MCP server and the judt agent, see [REST API](/manage/interfaces/api).
+
+## Authentication
+
+Each request must have an API key or an OAuth access token in the `Authorization` header:
+
+```http
+Authorization: Bearer API_KEY_OR_ACCESS_TOKEN
+```
+
+Replace `API_KEY_OR_ACCESS_TOKEN` with an API key from the dashboard, or with an OAuth access token for the API. An OAuth access token that is bound to a DPoP key uses `Authorization: DPoP` and a DPoP proof. For more information, see [Authenticate to the API and the MCP server](/manage/authentication).

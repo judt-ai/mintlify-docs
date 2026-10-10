@@ -3,7 +3,7 @@
   "info": {
     "title": "judt API",
     "version": "1.0.0",
-    "description": "The judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token as a bearer token in the `Authorization` header. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App. Give that kind of token to an agent.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Retries\n\nA request that changes something returns `200` with its result after the work is done. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional."
+    "description": "The judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token or an OAuth access token in the `Authorization` header.\n\n- **API token:** send it as a bearer token. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App.\n- **OAuth access token:** an agent gets one when a person approves its access to one organization, so the person never handles a token. Reads need the `poppy:read` scope, and changes need `poppy:write`. To register and sign in, follow https://judt.ai/auth.md. Send the token as a bearer token, or with a DPoP proof if it's bound to a DPoP key. One access token can work on both this API and the MCP server at https://api.judt.ai/mcp.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Retries\n\nA request that changes something returns `200` with its result after the work is done. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional."
   },
   "servers": [
     {
@@ -56,6 +56,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -86,7 +96,7 @@
                     "description": "The App's display name, up to 100 characters."
                   },
                   "slug": {
-                    "description": "The App's label under the App base domain. If another App has the slug, including a deleted App, or the slug is reserved, the request returns `409 slug_unavailable`. Reserved slugs: `staging`, `preview`, `api`, `www`, `local`. If you omit it, the API generates one, such as `teal-plucky-tatooine`.",
+                    "description": "The App's label under the App base domain. If another App has the slug, including a deleted App, or the slug is reserved, the request returns `409 slug_unavailable`. Reserved slugs: `staging`, `preview`, `api`, `www`, `local`. If you omit it, the API generates one, such as `plucky-teal-tatooine`.",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$"
                   },
@@ -196,6 +206,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -287,6 +307,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -338,6 +368,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -455,6 +495,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -546,6 +596,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -612,6 +672,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -706,6 +776,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -807,6 +887,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -870,6 +960,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -978,6 +1078,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -1046,6 +1156,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -1171,6 +1291,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -1277,6 +1407,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -1467,6 +1607,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -1604,6 +1754,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -1754,6 +1914,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -1844,6 +2014,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -1986,6 +2166,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -2089,6 +2279,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -2241,6 +2441,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -2319,6 +2529,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -2419,6 +2639,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -2566,6 +2796,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -2659,6 +2899,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -2723,6 +2973,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:write"
+            ]
           }
         ],
         "parameters": [
@@ -2817,6 +3077,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -2926,6 +3196,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -3076,6 +3356,16 @@
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "poppy:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "poppy:read"
+            ]
           }
         ],
         "parameters": [
@@ -3150,7 +3440,7 @@
     "/api/models": {
       "get": {
         "summary": "List models",
-        "description": "Returns the models that the agent can run on. To choose one, pass its `id` as `model` when you create a session or send a message.",
+        "description": "Returns the models that the agent can run on, starting with `auto`, the default. `auto` chooses a model for each message by how hard the task is, and each turn's `model` shows the choice. To choose a model yourself, pass its `id` as `model` when you create a session or send a message.",
         "tags": [
           "Agents"
         ],
@@ -3242,7 +3532,7 @@
                     "maxLength": 200
                   },
                   "model": {
-                    "description": "The session's default model. Default: the model marked `default` in `GET /api/models`.",
+                    "description": "The session's default model. Default: `auto`.",
                     "type": "string",
                     "maxLength": 100
                   },
@@ -3251,6 +3541,17 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 32768
+                  },
+                  "effort": {
+                    "description": "The effort for the first turn. Requires `message`.",
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -3769,6 +4070,17 @@
                     "description": "A model for this turn only. Default: the session's model.",
                     "type": "string",
                     "maxLength": 100
+                  },
+                  "effort": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ],
+                    "description": "How much the model thinks, from `low` to `max`. Higher effort is slower and uses more tokens, and helps on tasks that need careful reasoning. Default: Auto's choice when `model` is `auto`; otherwise the model's default."
                   }
                 },
                 "required": [
@@ -4395,6 +4707,26 @@
         "type": "http",
         "scheme": "bearer",
         "description": "An API token for one organization. You create and revoke tokens in the dashboard. A token scoped to one App can reach only that App, so give that kind of token to an agent."
+      },
+      "OAuth": {
+        "type": "oauth2",
+        "description": "An OAuth access token for one person and organization, sent as a bearer token. An agent registers with dynamic client registration and signs in with the authorization code or device authorization grant: https://judt.ai/auth.md describes each step. Request the resource https://api.judt.ai, and also https://api.judt.ai/mcp to use the same token on the MCP server. The person's role still applies.",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://judt.ai/api/auth/oauth2/authorize",
+            "tokenUrl": "https://judt.ai/api/auth/oauth2/token",
+            "refreshUrl": "https://judt.ai/api/auth/oauth2/token",
+            "scopes": {
+              "poppy:read": "See the organization's Apps, with their files, deployments, and logs.",
+              "poppy:write": "Change the organization's Apps: edit files, run commands, deploy, and manage Secrets."
+            }
+          }
+        }
+      },
+      "DPoP": {
+        "type": "http",
+        "scheme": "DPoP",
+        "description": "An OAuth access token bound to a DPoP key (RFC 9449), sent with a DPoP proof. A token request with a DPoP proof gets one, and a Personal Agent Protocol Session Token is one: a Personal Agent starts at https://judt.ai/.well-known/poppy.json. Scopes are the same as for OAuth."
       }
     },
     "schemas": {
@@ -6563,21 +6895,31 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "The model's ID, in the form `PROVIDER/MODEL`. Pass it as `model` on a session or a turn."
+                  "description": "The model's ID: `auto`, or `PROVIDER/MODEL`. Pass it as `model` on a session or a turn."
                 },
                 "name": {
                   "type": "string",
                   "description": "The model's display name."
                 },
                 "provider": {
-                  "type": "string",
-                  "description": "The company that provides the model."
+                  "description": "The company that provides the model, or null for `auto`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "context_window": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "description": "The maximum number of tokens the model can read in one request.",
-                  "example": 200000
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "example": 200000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The maximum number of tokens the model can read in one request, or null for `auto`."
                 },
                 "default": {
                   "type": "boolean",
@@ -6618,7 +6960,7 @@
           },
           "model": {
             "type": "string",
-            "description": "The default model for the session's turns."
+            "description": "The default model for the session's turns: `auto` or a model ID."
           },
           "status": {
             "type": "string",
@@ -6727,7 +7069,7 @@
                 },
                 "model": {
                   "type": "string",
-                  "description": "The default model for the session's turns."
+                  "description": "The default model for the session's turns: `auto` or a model ID."
                 },
                 "status": {
                   "type": "string",
@@ -6869,7 +7211,22 @@
           },
           "model": {
             "type": "string",
-            "description": "The model that the turn runs on."
+            "description": "The model that the turn runs on. If `requested_model` is `auto`, this is the model that Auto chose."
+          },
+          "requested_model": {
+            "type": "string",
+            "description": "The model that the turn asked for: `auto` or a model ID."
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "description": "How much the model thinks on this turn, from `low` to `max`. Auto chooses it by how much reasoning the task needs, unless the request set `effort`; with a chosen model, it is the model's default unless the request set it."
           },
           "input_request": {
             "anyOf": [
@@ -7040,6 +7397,8 @@
           "status",
           "message",
           "model",
+          "requested_model",
+          "effort",
           "input_request",
           "base_commit_id",
           "error",
@@ -7086,7 +7445,22 @@
                 },
                 "model": {
                   "type": "string",
-                  "description": "The model that the turn runs on."
+                  "description": "The model that the turn runs on. If `requested_model` is `auto`, this is the model that Auto chose."
+                },
+                "requested_model": {
+                  "type": "string",
+                  "description": "The model that the turn asked for: `auto` or a model ID."
+                },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "description": "How much the model thinks on this turn, from `low` to `max`. Auto chooses it by how much reasoning the task needs, unless the request set `effort`; with a chosen model, it is the model's default unless the request set it."
                 },
                 "input_request": {
                   "anyOf": [
@@ -7257,6 +7631,8 @@
                 "status",
                 "message",
                 "model",
+                "requested_model",
+                "effort",
                 "input_request",
                 "base_commit_id",
                 "error",
