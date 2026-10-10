@@ -1,6 +1,159 @@
 ---
-title: "Authenticate with API tokens"
+title: "Authenticate to the API and the MCP server"
 sidebarTitle: "Authentication"
-description: "Create API tokens in the dashboard and send them as bearer tokens."
+description: "Send an API key or an OAuth access token with each request to the judt API and the judt MCP server."
 ---
-An API token belongs to one organization. A token that's scoped to one App can reach only that App.
+Each request to the judt API and the judt MCP server must have a credential in the `Authorization` header. judt accepts two types of credential:
+
+- **API key**: You make the key in the dashboard. Then you give it to a script or an agent.
+- **OAuth access token**: An agent gets the token after you approve its access in your browser. You do not copy a credential.
+
+The two servers have these URLs:
+
+- API: `https://api.judt.ai/api`
+- MCP server: `https://api.judt.ai/mcp`
+
+## Choose a credential
+
+Use this table to choose a credential:
+
+| Who sends the requests | Credential |
+| --- | --- |
+| Your scripts and your CI jobs | An API key |
+| An agent that must change only one App | An API key for that App |
+| An MCP client that has OAuth, such as claude.ai, ChatGPT, Claude Code, VS Code, or Cursor | An OAuth access token. The client signs you in. |
+| A different agent | An OAuth access token. The agent signs you in with a code. |
+
+An OAuth access token gives access to all the Apps of one organization. To limit an agent to one App, give it an API key for that App.
+
+## Use an API key
+
+An API key acts as you in one organization. A key can give access to all the Apps of the organization, or to one App only. A key for one App cannot make Apps.
+
+To make an API key, do these steps:
+
+1. In the dashboard, go to the **API keys** page.
+2. Click **Create API key**.
+3. Type a **Name** for the key. Use the name of the place where you keep the key, such as `Laptop CLI`.
+4. In **App**, select **All apps** or one App.
+5. In **Expires**, select when the key stops.
+6. Click **Create API key**.
+7. Copy the key. The dashboard shows the key one time only.
+
+An API key starts with `judt_`. Send the key as a bearer token:
+
+```http
+GET https://api.judt.ai/api/apps
+Authorization: Bearer API_KEY
+```
+
+Replace `API_KEY` with your API key.
+
+<Warning>
+  Do not paste an API key into a conversation with an agent. Give the key to the agent in an environment variable or a secret store.
+</Warning>
+
+To stop a key, revoke it on the **API keys** page.
+
+## Use an OAuth access token
+
+An OAuth access token acts as you in one organization. You choose the organization and the scopes when you approve the access. Your role in the organization also applies. An agent cannot do an action that you cannot do.
+
+### Scopes
+
+judt has these scopes:
+
+| Scope | Access |
+| --- | --- |
+| `poppy:read` | See the Apps, with their files, deployments, and logs. |
+| `poppy:write` | Change the Apps: edit files, run commands, deploy, and manage Secrets. |
+| `offline_access` | Get a refresh token. The agent keeps its access after the access token expires. |
+
+A read request needs `poppy:read`. All other requests need `poppy:write`.
+
+### Connect an MCP client
+
+To connect an MCP client that has OAuth, do these steps:
+
+1. In the client, add an MCP server with the URL `https://api.judt.ai/mcp`. Do not set a token or an `Authorization` header.
+2. When the client opens a judt page, sign in.
+3. If you are a member of more than one organization, select the organization for the client.
+4. Select the scopes to give, and then click **Allow**.
+
+The client stays connected until you disconnect it. Its token works only on the MCP server.
+
+### Connect a different agent
+
+An agent that does not have OAuth gets its access with the OAuth device authorization grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)). The agent does not need an account or an API key before it starts.
+
+To connect the agent, do these steps:
+
+1. Tell the agent to read `https://judt.ai/auth.md` and to connect to judt.
+2. The agent sends you a link and a code. Open the link.
+3. Sign in to judt. If you do not have an account, sign up.
+4. If you are a member of more than one organization, select the organization for the agent.
+5. Make sure that the page shows the same code as the agent sent you.
+6. Select the scopes to give, and then approve.
+
+The agent then gets its tokens and starts to send requests.
+
+### Build an agent that connects to judt
+
+If you build an agent, use the steps in [auth.md](https://judt.ai/auth.md). auth.md gives each request and response. In summary, the agent does these steps:
+
+1. It registers as a public client with dynamic client registration ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)). It does this one time.
+2. It gets a device code and a user code. In this request, it sends one `resource` parameter for each server that it uses.
+3. It shows the user code and the link to the user.
+4. It polls the token endpoint until the user approves.
+5. It sends the access token as a bearer token: `Authorization: Bearer ACCESS_TOKEN`.
+6. It refreshes the access token before the token expires.
+
+The `resource` parameters control where a token works. A server accepts only a token for that server. This request gets a code for one token that works on the API and on the MCP server:
+
+```http
+POST https://judt.ai/api/auth/device/code
+Content-Type: application/x-www-form-urlencoded
+
+client_id=CLIENT_ID
+&scope=poppy:read+poppy:write+offline_access
+&resource=https://api.judt.ai
+&resource=https://api.judt.ai/mcp
+```
+
+Replace `CLIENT_ID` with the `client_id` that the agent got when it registered.
+
+If the agent does not send a `resource` parameter, then the token works only on the API. A refreshed token works on the same servers as the first token.
+
+Agents that use the [Personal Agent Protocol](https://personalagentprotocol.org/docs/spec) start at `https://judt.ai/.well-known/poppy.json` instead. Their Session Tokens use DPoP on the API. They can use a bearer token only on the MCP server.
+
+### Token lifetimes
+
+Tokens have these lifetimes:
+
+- **Access token**: one hour.
+- **Refresh token**: 30 days. Each refresh gives a new refresh token. Keep the new token, and discard the old token.
+
+### Optional: Bind tokens to a DPoP key
+
+An agent that holds a DPoP key ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) can bind its tokens to that key. To bind the tokens, the agent sends a DPoP proof with each token request. Then it sends each API or MCP request with `Authorization: DPoP ACCESS_TOKEN` and a new DPoP proof.
+
+A bound token does not work as a bearer token. A copy of a bound token does not give access without the key.
+
+### Disconnect an agent
+
+To disconnect an agent, go to the **API keys** page in the dashboard. In **Connected agents**, find the agent, and then click **Disconnect**. The agent loses its access on its next request.
+
+An agent can also stop its own access. It revokes its refresh token at the revocation endpoint.
+
+## Errors
+
+When the server refuses a credential, the `WWW-Authenticate` header gives the error. The response body has the same JSON error as other API errors. For more information, see [Errors](/manage/concepts/errors).
+
+| Status | Error | Cause | Action |
+| --- | --- | --- | --- |
+| `401` | No error | The request has no credential. | Send an API key or an access token. |
+| `401` | `invalid_token` | The key or token is incorrect, expired, or revoked. Or the token is for a different server. | Refresh the access token, or get a new credential. |
+| `401` | `invalid_dpop_proof` | The DPoP proof is missing or incorrect. | Send a new proof for the method and the URL of this request. |
+| `403` | `insufficient_scope` | The token does not have the scope that the request needs. The `scope` parameter in the header gives the scope. | Ask the user to approve the scope. Then get a new token. |
+
+A `401` response also gives `resource_metadata` in the header. This URL points to the protected resource metadata ([RFC 9728](https://www.rfc-editor.org/rfc/rfc9728)). An agent uses this metadata to find the authorization server.
