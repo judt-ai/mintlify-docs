@@ -65,11 +65,13 @@ judt has these scopes:
 
 | Scope | Access |
 | --- | --- |
-| `poppy:read` | See the Apps, with their files, deployments, and logs. |
-| `poppy:write` | Change the Apps: edit files, run commands, deploy, and manage Secrets. |
+| `apps:read` | See the Apps, with their files, deployments, and logs. |
+| `apps:write` | Change the Apps: edit files, run commands, deploy, and manage Secrets. |
 | `offline_access` | Get a refresh token. The agent keeps its access after the access token expires. |
 
-A read request needs `poppy:read`. All other requests need `poppy:write`.
+A read request needs `apps:read`. All other requests need `apps:write`.
+
+On the page where you approve access, `apps:read` has the name **View Apps**, and `apps:write` has the name **Change Apps**.
 
 ### Connect an MCP client
 
@@ -115,7 +117,7 @@ POST https://judt.ai/api/auth/device/code
 Content-Type: application/x-www-form-urlencoded
 
 client_id=CLIENT_ID
-&scope=poppy:read+poppy:write+offline_access
+&scope=apps:read+apps:write+offline_access
 &resource=https://api.judt.ai
 &resource=https://api.judt.ai/mcp
 ```
@@ -141,7 +143,13 @@ A bound token does not work as a bearer token. A copy of a bound token does not 
 
 ### Disconnect an agent
 
-To disconnect an agent, go to the **API keys** page in the dashboard. In **Connected agents**, find the agent, and then click **Disconnect**. The agent loses its access on its next request.
+To disconnect an agent, do these steps:
+
+1. In the dashboard, open the account menu, and then click **Connected agents**. You can also go to `https://judt.ai/connected-agents`.
+2. Find the agent, and then click **Disconnect**.
+3. In the dialog, click **Disconnect**.
+
+The agent loses its access on its next request.
 
 An agent can also stop its own access. It revokes its refresh token at the revocation endpoint.
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "judt API",
     "version": "1.0.0",
-    "description": "The judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token or an OAuth access token in the `Authorization` header.\n\n- **API token:** send it as a bearer token. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App.\n- **OAuth access token:** an agent gets one when a person approves its access to one organization, so the person never handles a token. Reads need the `poppy:read` scope, and changes need `poppy:write`. To register and sign in, follow https://judt.ai/auth.md. Send the token as a bearer token, or with a DPoP proof if it's bound to a DPoP key. One access token can work on both this API and the MCP server at https://api.judt.ai/mcp.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Retries\n\nA request that changes something returns `200` with its result after the work is done. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional."
+    "description": "The judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token or an OAuth access token in the `Authorization` header.\n\n- **API token:** send it as a bearer token. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App.\n- **OAuth access token:** an agent gets one when a person approves its access to one organization, so the person never handles a token. Reads need the `apps:read` scope, and changes need `apps:write`. To register and sign in, follow https://judt.ai/auth.md. Send the token as a bearer token, or with a DPoP proof if it's bound to a DPoP key. One access token can work on both this API and the MCP server at https://api.judt.ai/mcp.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Retries\n\nA request that changes something returns `200` with its result after the work is done. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional."
   },
   "servers": [
     {
@@ -59,12 +59,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -209,12 +209,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -310,12 +310,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -371,12 +371,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -498,12 +498,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -599,12 +599,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -675,12 +675,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -779,12 +779,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -890,12 +890,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -963,12 +963,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -1081,12 +1081,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -1148,7 +1148,7 @@
     "/api/apps/{id}/files": {
       "get": {
         "summary": "List files",
-        "description": "Lists the App's source files by path. Folders aren't listed separately. A file's path includes its folders.",
+        "description": "Lists the App's source files by path: the files Git tracks, and new files that `.gitignore` doesn't ignore. Folders aren't listed separately. A file's path includes its folders.\n\nTo find code, filter paths with `path` or `glob`, and file text with `content` or `pattern`. A text search adds `match_count` and the first 20 matching lines to each file. To see more of a file, read it with `lines`.",
         "tags": [
           "Files"
         ],
@@ -1159,12 +1159,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -1229,6 +1229,26 @@
               "minLength": 1,
               "maxLength": 200
             }
+          },
+          {
+            "name": "glob",
+            "in": "query",
+            "description": "Returns only files whose `path` matches this glob, from the App's root. `*` matches within one folder, `**` matches across folders, `?` matches one character, `[abc]` matches one of a set, and `{ts,tsx}` matches any of its alternatives, as in `src/**/*.{ts,tsx}`. Without a leading `**/`, a glob matches only from the root: `*.json` matches `package.json` but not `src/data.json`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "pattern",
+            "in": "query",
+            "description": "Returns only files with a line that this regular expression matches, in Perl syntax. Matching is case-sensitive; to ignore case, start the expression with `(?i)`. Can't be combined with `content`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
         ],
         "responses": {
@@ -1244,7 +1264,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `invalid_request`: a parameter is malformed, or the request sets both `content` and `pattern`.\n- `invalid_pattern`: `glob` or `pattern` isn't valid, and `detail` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -1283,7 +1310,7 @@
     "/api/apps/{id}/files/{path}": {
       "get": {
         "summary": "Read a file",
-        "description": "Returns the file as JSON. For a text file, `content` holds the text. For a binary file, `binary` is `true` and `content` is left out. To get the bytes, send `Accept: application/octet-stream`.\n\nThe `ETag` header holds the file's version. To skip an unchanged file, send its ETag in `If-None-Match`, and the request returns `304`.",
+        "description": "Returns the file as JSON. For a text file, `content` holds the text, and `line_count` says how many lines it has. To read only some lines, set `lines`. For a binary file, `binary` is `true` and `content` is left out. To get the bytes, send `Accept: application/octet-stream`.\n\nThe `ETag` header holds the whole file's version, even when you read only some lines. To skip an unchanged file, send its ETag in `If-None-Match`, and the request returns `304`.",
         "tags": [
           "Files"
         ],
@@ -1294,12 +1321,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -1331,6 +1358,15 @@
               "type": "string"
             },
             "description": "One or more quoted ETags from earlier reads. If the file still matches one of them, the request returns `304` with no body."
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "description": "Returns only these lines of a text file: a range such as `120-180`, a start such as `120-` (to the end), or one line such as `120`. Lines are numbered from 1, and both ends are inclusive. An end past the last line stops at the last line.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9]\\d{0,8}(-([1-9]\\d{0,8})?)?$"
+            }
           }
         ],
         "responses": {
@@ -1362,7 +1398,14 @@
             "description": "The file still matches `If-None-Match`."
           },
           "400": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `invalid_request`: `lines` is malformed, or it's set with `Accept: application/octet-stream`.\n- `line_out_of_range`: `lines` starts past the file's last line.\n- `binary_file`: `lines` is set for a binary file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -1410,12 +1453,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -1610,12 +1653,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -1757,12 +1800,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -1917,12 +1960,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -2017,12 +2060,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -2169,12 +2212,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -2282,12 +2325,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -2433,7 +2476,7 @@
     "/api/apps/{id}/preview": {
       "post": {
         "summary": "Create a preview link",
-        "description": "Returns a short-lived URL that opens the sandbox's dev server in a browser.",
+        "description": "Returns a short-lived URL that opens the sandbox's dev server in a browser. The request starts the dev server if it isn't running, and waits for it to serve the sandbox's current files, including a rebuild that a recent change started.\n\nIf the dev server can't build or start the App, the request returns `422 preview_failed`, and `detail` has the dev server's output from that build. After a change breaks a rebuild, the dev server keeps serving the previous build, but the request still returns `422` until the App builds again. To check the App after a change, call this endpoint, then read its logs with `GET /api/apps/{id}/logs`.",
         "tags": [
           "Sandbox"
         ],
@@ -2444,12 +2487,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -2496,6 +2539,16 @@
           "410": {
             "$ref": "#/components/responses/Error"
           },
+          "422": {
+            "description": "- `preview_failed`: the dev server can't build or start the App. `detail` has its output from that build. Change the source, then retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "$ref": "#/components/responses/Error"
           },
@@ -2532,12 +2585,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -2642,12 +2695,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -2799,12 +2852,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -2902,12 +2955,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -2976,12 +3029,12 @@
           },
           {
             "OAuth": [
-              "poppy:write"
+              "apps:write"
             ]
           },
           {
             "DPoP": [
-              "poppy:write"
+              "apps:write"
             ]
           }
         ],
@@ -3080,12 +3133,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -3199,12 +3252,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -3359,12 +3412,12 @@
           },
           {
             "OAuth": [
-              "poppy:read"
+              "apps:read"
             ]
           },
           {
             "DPoP": [
-              "poppy:read"
+              "apps:read"
             ]
           }
         ],
@@ -4717,8 +4770,8 @@
             "tokenUrl": "https://judt.ai/api/auth/oauth2/token",
             "refreshUrl": "https://judt.ai/api/auth/oauth2/token",
             "scopes": {
-              "poppy:read": "See the organization's Apps, with their files, deployments, and logs.",
-              "poppy:write": "Change the organization's Apps: edit files, run commands, deploy, and manage Secrets."
+              "apps:read": "See the organization's Apps, with their files, deployments, and logs.",
+              "apps:write": "Change the organization's Apps: edit files, run commands, deploy, and manage Secrets."
             }
           }
         }
@@ -6525,8 +6578,34 @@
             "description": "True if the file isn't UTF-8 text; false otherwise. For a binary file, `content` is left out. To get the bytes, send `Accept: application/octet-stream`."
           },
           "content": {
-            "description": "The file's text. Left out for a binary file.",
+            "description": "The file's text, or only the lines that `lines` asked for. Left out for a binary file.",
             "type": "string"
+          },
+          "line_count": {
+            "description": "How many lines the whole file has. A final line ending doesn't start another line. Left out for a binary file.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "lines": {
+            "description": "The lines that `content` holds. Present only when the request sets `lines`.",
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The first line in `content`, numbered from 1."
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The last line in `content`."
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -6554,6 +6633,34 @@
                   "minimum": 0,
                   "description": "The file's size, in bytes.",
                   "example": 2048
+                },
+                "match_count": {
+                  "description": "How many lines in the file match. Present only when the request sets `content` or `pattern`.",
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "matches": {
+                  "description": "The first 20 matching lines, in line order. Present only when the request sets `content` or `pattern`.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "The line number, from 1."
+                      },
+                      "text": {
+                        "type": "string",
+                        "description": "The line's text, without its line ending. A line longer than 300 characters is cut to the 300 around its first match, with `…` marking each cut."
+                      }
+                    },
+                    "required": [
+                      "line",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
