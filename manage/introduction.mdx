@@ -1,37 +1,40 @@
 ---
 title: "Judt Apps"
 sidebarTitle: "Introduction"
-description: "Create, change, and publish full-stack web apps with the judt API, the MCP server, or the in-product agent."
+description: "Create, change, and publish full-stack web apps with the Judt API, the MCP server, or the in-product agent."
 ---
 
-judt is a platform where you and your agents create, test, and publish full-stack web Apps without managing infrastructure. Each App has a development sandbox, a Git repository, a build and deployment pipeline, and an isolated production runtime.
+Judt is the platform to give your agents the ability to create and publish full-stack web Apps without managing infrastructure. Each App has a development sandbox, a Git repository, a build and deployment pipeline, and it's own production runtime.
 
-Every judt App runs on [celld](https://github.com/denoland/celld), a Workers-compatible JavaScript and TypeScript runtime. An App can configure its own resources in `wrangler.json`:
+Every Judt App runs on [celld](https://github.com/denoland/celld), a Workers-compatible JavaScript and TypeScript runtime. Each App can configure its own resources in `wrangler.json`:
 
-- [D1 SQLite databases](/build/storage/d1) with schema migrations
-- [Durable Objects](/build/storage/durable-objects) and [Durable Object facets](/build/advanced/facets)
+- [D1 SQLite databases](/build/storage/d1) for full relational databases for your backend.
+- [Durable Objects](/build/storage/durable-objects) and [Durable Object facets](/build/advanced/facets): Great for stateful Apps, agent sessions and many other use cases.
 - [KV key-value storage](/build/storage/kv)
-- [R2 object storage](/build/storage/r2)
-- [Queues](/build/background/queues), [Cron Triggers](/build/background/cron-triggers), and [Workflows](/build/background/workflows)
-- [Static assets](/build/static-assets) and [Dynamic Workers](/build/advanced/dynamic-workers)
+- [R2 object storage](/build/storage/r2): Store files, documents, and more. A workspace for agents.
+- [Queues](/build/background/queues), [Cron Triggers](/build/background/cron-triggers), and [Workflows](/build/background/workflows): Trigger long running jobs, batch process and more.
+- [Static assets](/build/static-assets): Set static assets (images, pdfs, anything) for the App.
+-  [Dynamic Workers](/build/advanced/dynamic-workers): Think [CodeMode](https://lucumr.pocoo.org/2026/10/6/codemode/). Give your agents a way to execute code, instead of each needing an MCP connector.
+
+This means you can build full stack Apps, agents, workflows and more powered by this runtime. Agents more and more need full stack applications and don't want to provision new cloud
 
 ## Ways to manage Apps
 
-You can manage Apps through three programmatic interfaces or in the [judt dashboard](https://judt.ai/apps). All three interfaces share the same permissions, validation rules, and state.
+You can manage Apps through three programmatic interfaces or in the [Judt dashboard](https://judt.ai/apps). All three interfaces share the same permissions, validation rules, and state.
 
 | Interface | When to use it |
 | --- | --- |
-| [REST API](/manage/interfaces/api) | Call `https://api.judt.ai` from scripts, CI jobs, or agents that have a shell and `curl`. |
+| [REST API](/manage/interfaces/api) | Call `https://api.judt.ai` from your product or agents. |
 | [MCP server](/manage/interfaces/mcp) | Connect an MCP client such as Claude Code, Cursor, VS Code, Codex, claude.ai, or ChatGPT to `https://api.judt.ai/mcp`. |
-| [In-product agent](/manage/interfaces/agent) | Chat with the judt agent in the dashboard, or start agent sessions and turns through the API. |
+| [In-product agent](/manage/interfaces/agent) | Chat with the Judt agent in the dashboard, or start agent sessions and turns through the API. |
 
 ## How an App works
 
 An App moves from source code to production in five steps:
 
-1. **Create the App.** Start from a template. judt gives the App a unique slug and a production URL at `https://<slug>.judt.dev`. See [Apps and addresses](/manage/concepts/apps).
+1. **Create the App.** Start from a template. Judt gives the App a unique slug and a production URL at `https://<slug>.judt.dev`. See [Apps and addresses](/manage/concepts/apps).
 2. **Edit and test in the sandbox.** Each App has a Linux sandbox with a `/app` working directory, Git repository, shell command runner, and live dev server. The sandbox starts automatically when a request needs it and stops when idle. See [Sandboxes](/manage/concepts/sandbox).
-3. **Set Secrets.** Store API keys and credentials outside your source files. judt injects Secrets into the sandbox environment and into production deployments as properties on `env`. See [Secrets](/manage/concepts/secrets).
+3. **Set Secrets.** Store API keys and credentials outside your source files. Judt injects Secrets into the sandbox environment and into production deployments as properties on `env`. See [Secrets](/manage/concepts/secrets).
 4. **Commit and publish.** Save your sandbox changes as a Git commit with a durable backup, and then deploy that commit to production. See [Commits and deployments](/manage/concepts/deployments).
 5. **Control access and monitor.** Share preview links to the sandbox, set production visibility (`public`, `password`, or `private`), and inspect platform events and runtime logs. See [Previews and access](/manage/concepts/previews) and [Troubleshoot an App](/manage/guides/troubleshoot).
 
