@@ -2,4 +2,136 @@
 title: "Commits and deployments"
 description: "How a commit becomes the production deployment of an App."
 ---
-A deployment publishes one commit of an App's source to production.
+
+In judt, editing files in the sandbox never changes your live production App directly. To publish changes to production, you save a **commit** and then create a **deployment** from that commit.
+
+## Commits
+
+A commit is an immutable snapshot of your App's `/app` directory stored in Git and backed up to durable storage.
+
+### Create a commit
+
+After you edit files or run commands in the sandbox, call `POST /api/apps/{id}/commits`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/commits \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Add /health endpoint"}'
+```
+
+The API stages all tracked and untracked files in `/app` (respecting `.gitignore`), creates a Git commit, saves a durable recovery point, and returns a `Commit` object:
+
+```json
+{
+  "id": "cmt_3xK9mQ2pRtV7nW4sLc8ZbY5j",
+  "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "sequence": 4,
+  "commit_sha": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+  "parent_sha": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+  "message": "Add /health endpoint",
+  "author": {
+    "name": "Ada Lovelace",
+    "email": "ada@example.com"
+  },
+  "recovery_point_id": "rec_6nP4vX8kQr1TmW3wLs5CdF9h",
+  "created_at": "2026-10-15T20:20:00.000Z"
+}
+```
+
+| Identifier | Where to use it |
+| --- | --- |
+| `id` (`cmt_...`) | Pass as `commit_id` to `POST /api/apps/{id}/restore` to reset the sandbox working tree to this snapshot. |
+| `commit_sha` (40-char hex) | Pass as `commit` to `POST /api/apps/{id}/deployments` to deploy a specific commit to production. |
+
+To list existing commits without starting the sandbox, call `GET /api/apps/{id}/commits`.
+
+## Deployments
+
+A deployment builds a commit in a clean container, runs any D1 database migrations, injects your App's Secrets, and publishes the bundle to production.
+
+### Create a deployment
+
+Call `POST /api/apps/{id}/deployments`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+- **Deploy the latest commit**: Send `{}` (or omit `commit`) to deploy the current `HEAD` commit of the sandbox.
+- **Deploy a specific commit**: Send `{"commit": "<40-char-commit-sha>"}` to deploy that exact commit (for example, to roll back to an earlier version).
+
+<Warning>
+  `POST /api/apps/{id}/deployments` does not automatically commit uncommitted file edits in the sandbox. Always call `POST /api/apps/{id}/commits` before deploying new changes.
+</Warning>
+
+Only one deployment can run at a time for an App. If another deployment is still running, the API returns `409 deployment_unsettled`.
+
+### What happens during a deployment
+
+When you create a deployment, judt executes these steps in order:
+
+1. **Export the commit**: Reads the commit snapshot from Git and verifies source limits (up to `2,048` files and folders, `32 MiB` total uncompressed size, and `1 MiB` per file).
+2. **Validate `wrangler.json`**: Checks the App configuration and storage bindings. See [The App contract](/build/app-contract) and [Configure wrangler.json](/build/wrangler-json).
+3. **Run `before` migrations**: If the App has existing D1 databases with pending schema migrations, applies them before the new code goes live.
+4. **Install dependencies and build**: If `package.json` exists, runs `npm ci --ignore-scripts` (or `npm install --ignore-scripts`) and `npm run build` (when a `build` script is defined) inside an isolated build container. Secrets are not exposed during the build step. See [npm packages and builds](/build/npm-and-builds).
+5. **Inject Secrets and publish**: Injects the App's current Secrets into the deployed `vars` configuration and publishes the bundle to the production runtime.
+6. **Verify activation**: Probes the production runtime to confirm the new deployment starts cleanly.
+7. **Run `after` migrations**: Applies initial D1 migrations for any newly created D1 databases.
+
+### The Deployment object
+
+`POST /api/apps/{id}/deployments` waits for the pipeline to finish (up to 540 seconds) and returns the `Deployment` object:
+
+```json
+{
+  "id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+  "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "source_commit": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+  "commit_id": "cmt_3xK9mQ2pRtV7nW4sLc8ZbY5j",
+  "source_backup_status": "healthy",
+  "publication_status": "published",
+  "activation_status": "active",
+  "migrations": [],
+  "failure_code": null,
+  "failure_message": null,
+  "created_at": "2026-10-15T20:21:00.000Z",
+  "updated_at": "2026-10-15T20:21:08.000Z",
+  "published_at": "2026-10-15T20:21:07.000Z"
+}
+```
+
+### Deployment status fields
+
+A deployment tracks three separate status fields:
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `source_backup_status` | `pending`, `healthy`, `degraded` | Whether the commit's source archive is backed up in durable storage. |
+| `publication_status` | `pending`, `published`, `failed` | Whether the build succeeded and the bundle was published to production. |
+| `activation_status` | `unverified`, `active`, `disabled`, `failed` | Whether the published bundle started serving in production at deploy time. |
+
+<Note>
+  `activation_status` records whether a deployment started serving when it was published. It stays `"active"` on older deployment records after a newer deployment replaces them. To check which deployment is serving right now, inspect `production.deployment_id` on `GET /api/apps/{id}`.
+</Note>
+
+If a deployment fails during build, migration, publication, or activation, `failure_code` and `failure_message` explain why, and the previous production deployment continues serving if the failure happened before publication.
+
+## Unpublish an App
+
+To take an App offline without deleting it, call `POST /api/apps/{id}/unpublish`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/unpublish \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+Unpublishing stops the production runtime and sets `production.status` to `"unpublished"` and `production.deployment_id` to `null`. The App's source code, commits, Secrets, and runtime storage remain intact. Call `POST /api/apps/{id}/deployments` at any time to publish the App again.
+
+## Next steps
+
+- Follow step-by-step procedures to publish, roll back, and unpublish in [Publish and unpublish an App](/manage/guides/publish).
+- Learn how D1 migrations and storage bindings behave across deployments in [The App contract](/build/app-contract).

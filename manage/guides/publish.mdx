@@ -3,4 +3,136 @@ title: "Publish and unpublish an App"
 sidebarTitle: "Publish and unpublish"
 description: "Publish a commit to production, go back to an earlier commit, and take an App offline."
 ---
-This guide shows how to publish a commit, publish an earlier commit again, and unpublish an App.
+This guide shows how to publish changes from an App's sandbox to production, how to roll back production to an earlier commit, and how to take a published App offline.
+
+<Note>
+  Publishing and unpublishing an App requires the `owner` or `admin` role in the organization.
+</Note>
+
+## Publish new changes to production
+
+Deployments always publish a committed snapshot of `/app`, never uncommitted sandbox files.
+
+<Steps>
+  <Step title="Verify your changes on the sandbox dev server">
+    Before you commit, start a preview to verify that the App bundles and runs cleanly:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/preview \
+      -H "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    If the build fails, the API returns `422 preview_failed` with the compiler error in `error.detail`.
+  </Step>
+  <Step title="Check what changed">
+    Inspect the modified and untracked files in `/app`:
+
+    ```bash
+    curl "https://api.judt.ai/api/apps/$APP_ID/git?mode=status" \
+      -H "Authorization: Bearer $JUDT_API_KEY"
+    ```
+  </Step>
+  <Step title="Create a commit">
+    Commit the sandbox changes to Git and create a durable backup:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/commits \
+      -H "Authorization: Bearer $JUDT_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"message": "Add /api/orders endpoint"}'
+    ```
+
+    If no files changed since `HEAD`, the API returns `409 nothing_to_commit` and you can proceed directly to the next step.
+  </Step>
+  <Step title="Deploy the commit">
+    Publish the sandbox's `HEAD` commit to production:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
+      -H "Authorization: Bearer $JUDT_API_KEY" \
+      -H "Idempotency-Key: $(uuidgen)" \
+      -H "Content-Type: application/json" \
+      -d '{}'
+    ```
+
+    The request builds the App, applies any D1 migrations, publishes the bundle, and waits until the production runtime is serving:
+
+    ```json
+    {
+      "id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+      "source_commit": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+      "publication_status": "published",
+      "activation_status": "active",
+      ...
+    }
+    ```
+  </Step>
+</Steps>
+
+## Roll back to an earlier commit
+
+Every commit in your App's history has a 40-character `commit_sha` and a `cmt_...` ID. You can redeploy any earlier commit directly to production.
+
+<Steps>
+  <Step title="Find the commit to restore">
+    List the App's commits:
+
+    ```bash
+    curl "https://api.judt.ai/api/apps/$APP_ID/commits?limit=10" \
+      -H "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    Find the target commit in `results` and copy its 40-character `commit_sha` (for example, `1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d`) and its `id` (`cmt_...`).
+  </Step>
+  <Step title="Deploy the earlier commit to production">
+    Pass the 40-character `commit_sha` in the `commit` field of `POST /api/apps/{id}/deployments`:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
+      -H "Authorization: Bearer $JUDT_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "commit": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d"
+      }'
+    ```
+
+    When the request returns with `publication_status: "published"` and `activation_status: "active"`, production is serving that earlier commit.
+  </Step>
+  <Step title="Optional: Reset the sandbox working tree">
+    Deploying an earlier commit changes production, but leaves the sandbox `/app` directory on its current commit. If you also want to reset `/app` in the sandbox to match that commit, call `POST /api/apps/{id}/restore` with the commit's `cmt_...` ID:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/restore \
+      -H "Authorization: Bearer $JUDT_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "commit_id": "cmt_1xK4mQ9pRtV2nW8sLc5ZbY3j"
+      }'
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Rolling back code does not reverse D1 database schema migrations that have already been applied. Write backward-compatible D1 migrations so earlier commits can still read the database if you roll back. See [D1](/build/storage/d1).
+</Warning>
+
+## Take an App offline (unpublish)
+
+To stop serving an App in production without deleting the App, call `POST /api/apps/{id}/unpublish`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/unpublish \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+The API returns the updated App object with:
+
+- `production.status`: `"unpublished"`
+- `production.deployment_id`: `null`
+
+Requests to the App's URL no longer reach your Worker. Your source files, commits, Secrets, and D1 / KV / R2 / Durable Object data remain untouched. Call `POST /api/apps/{id}/deployments` whenever you are ready to put the App back online.
+
+## Next steps
+
+- Understand the full build and migration pipeline in [Commits and deployments](/manage/concepts/deployments).
+- Diagnose failed builds or unhealthy deployments in [Troubleshoot an App](/manage/guides/troubleshoot).

@@ -2,4 +2,127 @@
 title: "Previews and access"
 description: "Share a running sandbox with a preview link, and control who can open an App."
 ---
-A preview link opens the App as it runs in the sandbox, before you publish it.
+
+Judt separates access to your development **sandbox** from access to your published **production** App:
+
+- **Sandbox previews** let you and your agents test uncommitted code on the sandbox dev server through a short-lived signed URL.
+- **Production visibility** (`public`, `password`, or `private`) controls who can open your published App at `https://<slug>.judt.dev` or its custom domain.
+- **Access tokens** let scripts, webhooks, and agents call a `password` or `private` production App without an interactive browser sign-in.
+
+## Sandbox preview links
+
+A sandbox is always private to your organization. To open or test the sandbox's live dev server (`celld dev`), call `POST /api/apps/{id}/preview`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/preview \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+When you call `POST /api/apps/{id}/preview`, judt does the following:
+
+1. Starts the sandbox if it is stopped.
+2. Starts `celld dev` on port `3000` (if not already running) and waits for the bundler to build your entry module.
+3. Returns a signed preview URL that is valid for 5 minutes (`expires_in: 300`):
+
+```json
+{
+  "url": "https://customer-portal.preview.judt.dev/#token=eyJhbGci...",
+  "expires_in": 300
+}
+```
+
+When you open `url` in a browser, the preview gateway reads the `#token=` fragment, sets a 5-minute session cookie on the preview subdomain, and serves your App from the sandbox dev server.
+
+<Note>
+  If your code has a syntax or bundler error, `POST /api/apps/{id}/preview` returns `422 preview_failed` with the compiler error output in `error.detail`. See [Test on the dev server](/build/dev-server).
+</Note>
+
+## Production visibility
+
+You control who can open the published production App through the `production` object on `POST /api/apps` or `PATCH /api/apps/{id}`. Only organization `owner` and `admin` roles can change production visibility.
+
+| `visibility` | Who can open the published App |
+| --- | --- |
+| `public` (default) | Anyone on the internet with the App's URL. |
+| `password` | Visitors who enter the App's password (`8` to `128` characters), or members of the App's organization who sign in with judt. |
+| `private` | Only members of the App's organization who sign in with judt. |
+
+Both `password` and `private` sign-ins grant a **60-minute** browser session on the App.
+
+### Set password protection
+
+To require a password on a published App, send `visibility: "password"` and a `password` (`8` to `128` characters) to `PATCH /api/apps/{id}`:
+
+```bash
+curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "production": {
+      "visibility": "password",
+      "password": "correct-horse-battery-staple"
+    }
+  }'
+```
+
+The API never returns the password in responses; instead, `production.password_updated_at` records when the password was last set. Setting a new password immediately invalidates existing browser sessions that signed in with the old password.
+
+Once an App has a password stored, you can switch between `visibility: "public"`, `"private"`, and `"password"` without resending `password`, or pass a new `password` to rotate it.
+
+### Restrict to organization members
+
+To restrict the published App to members of your organization, set `visibility` to `"private"`:
+
+```bash
+curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "production": {
+      "visibility": "private"
+    }
+  }'
+```
+
+When a visitor opens the App URL in a browser, judt redirects them to sign in and verifies that they belong to the App's organization.
+
+## Short-lived production access tokens
+
+When a published App uses `password` or `private` visibility, automated callers—such as agents, curl scripts, or webhook tests—cannot complete an interactive browser sign-in. Any organization member (including `member` roles) can mint a 5-minute access token for a published App by calling `POST /api/apps/{id}/access`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/access \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+The API returns a short-lived token (`expires_at` is 5 minutes in the future):
+
+```json
+{
+  "token": "eyJhbGciOiJFUzI1NiIs...",
+  "expires_at": "2026-10-15T20:35:00.000Z"
+}
+```
+
+If the App is not currently published, `POST /api/apps/{id}/access` returns `409 app_unpublished`.
+
+### Use an access token
+
+You can send the access token to the published App in two ways:
+
+1. **`X-Judt-Access-Token` request header (recommended for scripts and agents)**:
+   ```bash
+   curl https://customer-portal.judt.dev/api/items \
+     -H "X-Judt-Access-Token: $APP_ACCESS_TOKEN"
+   ```
+   Using `X-Judt-Access-Token` authorizes the request at the judt edge while leaving the `Authorization` header free for your App's own authentication logic.
+2. **`?access_token=` URL query parameter (for browsers)**:
+   ```text
+   https://customer-portal.judt.dev/?access_token=TOKEN
+   ```
+   On a `GET` or `HEAD` request, the edge verifies the query parameter, sets a session cookie for the App, and redirects (`303 See Other`) to the clean URL without `access_token` in the address bar.
+
+## Next steps
+
+- Learn how to test your code in the sandbox in [Test on the dev server](/build/dev-server).
+- Publish or unpublish an App in [Publish and unpublish an App](/manage/guides/publish).

@@ -31,9 +31,7 @@
               "manage/concepts/sandbox",
               "manage/concepts/deployments",
               "manage/concepts/secrets",
-              "manage/concepts/previews",
-              "manage/concepts/retries",
-              "manage/concepts/errors"
+              "manage/concepts/previews"
             ]
           },
           {
@@ -233,7 +231,7 @@
     },
     "body": {
       "family": "switzer",
-      "weight": 300
+      "weight": 400
     }
   },
   "contextual": {

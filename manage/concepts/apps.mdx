@@ -2,4 +2,156 @@
 title: "Apps and addresses"
 description: "What an App is, and how its slug, custom domain, and URL work."
 ---
-An App is one Worker with a sandbox, where you and agents edit and run its source, and a production deployment that serves it.
+An App is a full-stack web application in your organization. Each App has its own source repository, development sandbox, Secrets, runtime storage (D1, Durable Objects, KV, R2), and production deployment.
+
+## The App object
+
+When you create or read an App with `POST /api/apps` or `GET /api/apps/{id}`, the API returns an App object:
+
+```json
+{
+  "id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "name": "Customer Portal",
+  "slug": "customer-portal",
+  "domain": null,
+  "url": "https://customer-portal.judt.dev",
+  "template": {
+    "id": "tpl_hello",
+    "version": 1
+  },
+  "sandbox_status": "stopped",
+  "sandbox_error": null,
+  "production": {
+    "visibility": "public",
+    "password_updated_at": null,
+    "status": "ready",
+    "deployment_id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+    "failure_code": null,
+    "observed_at": "2026-10-15T20:15:00.000Z"
+  },
+  "soft_deleted_at": null,
+  "created_at": "2026-10-15T19:30:00.000Z",
+  "updated_at": "2026-10-15T20:15:00.000Z"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `id` | Unique identifier for the App (`app_...`). Use this ID in all `/api/apps/{id}` requests. |
+| `name` | Display name in the dashboard (`1` to `100` characters). |
+| `slug` | Subdomain under `.judt.dev` (`1` to `48` lowercase letters, digits, and hyphens). |
+| `domain` | Custom domain attached to the App, or `null` if none is configured. |
+| `url` | Primary public URL of the App: `https://<domain>` when `domain` is set, or `https://<slug>.judt.dev` otherwise. |
+| `template` | The starter template (`id` and `version`) used when the App was created. |
+| `sandbox_status` | Current state of the App's development sandbox (`stopped`, `starting`, `running`, `stopping`, or `failed`). |
+| `sandbox_error` | Details (`code`, `message`, `at`, `retry_at`) if the sandbox failed to start, or `null`. |
+| `production` | Production access settings and live runtime status. |
+| `soft_deleted_at` | Timestamp when the App was deleted, or `null` if the App is active. |
+
+## Templates
+
+Every new App starts from a template. If you omit `template_id` when calling `POST /api/apps`, judt uses the default Hello template.
+
+To list available templates and their `id` values, call `GET /api/templates`:
+
+```bash
+curl https://api.judt.ai/api/apps \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Portal",
+    "slug": "customer-portal",
+    "template_id": "tpl_hello"
+  }'
+```
+
+The template files are copied into `/app` the first time the sandbox starts.
+
+## Slugs, custom domains, and URLs
+
+Every App has a `slug` that determines its `.judt.dev` address:
+
+```text
+https://<slug>.judt.dev
+```
+
+If you do not pass a `slug` when you create an App, judt generates a three-word slug such as `teal-plucky-tatooine`.
+
+### Slug rules
+
+A slug must meet these rules:
+
+- Contain `1` to `48` characters.
+- Use only lowercase ASCII letters (`a-z`), digits (`0-9`), and hyphens (`-`).
+- Start and end with a letter or a digit (`^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`).
+- Be unique across all Apps on judt, including soft-deleted Apps.
+- Not use a reserved name: `staging`, `preview`, `api`, `www`, or `local`.
+
+If a slug is already taken or reserved, the API returns `409 slug_unavailable`.
+
+### Rename a slug
+
+You can change an App's `name` or `slug` with `PATCH /api/apps/{id}`:
+
+```bash
+curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "acme-portal"}'
+```
+
+<Warning>
+  Changing `slug` moves the published App to the new `.judt.dev` address immediately. The old `.judt.dev` address stops serving the App and does not redirect to the new address.
+</Warning>
+
+You cannot change `slug` or `production` while a deployment is in progress (`409 deployment_unsettled`).
+
+### Custom domains
+
+When a custom domain is configured on an App, the `domain` field contains that hostname and `url` returns `https://<domain>`. The `https://<slug>.judt.dev` address continues to serve the App alongside the custom domain.
+
+## Production status
+
+The `production.status` field reports the live state of the published App:
+
+| Status | Meaning |
+| --- | --- |
+| `unpublished` | No deployment is published, or the App was unpublished with `POST /api/apps/{id}/unpublish`. |
+| `starting` | The production runtime is starting up. |
+| `ready` | The published deployment is running and serving traffic. |
+| `idle` | The published deployment is asleep between requests. The next incoming HTTP request wakes it automatically. |
+| `stopped` | The production runtime is stopped. |
+| `unhealthy` | The production runtime failed a health check. |
+| `failed` | The production runtime failed to start (`production.failure_code` gives the reason). |
+| `unknown` | The platform could not observe the current runtime status. |
+
+The `production.deployment_id` field shows which deployment (`dep_...`) is currently serving in production.
+
+## Delete an App and 30-day retention
+
+To delete an App, send `DELETE /api/apps/{id}`:
+
+```bash
+curl -X DELETE https://api.judt.ai/api/apps/$APP_ID \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+Deleting an App does the following immediately:
+
+1. Sets `soft_deleted_at` to the current timestamp.
+2. Unpublishes the production deployment so the App URL stops serving traffic.
+3. Stops and removes the development sandbox.
+4. Rejects any new writes, commands, previews, or deployments with `410 app_deleted`.
+
+For **30 days** after deletion, you can still inspect the deleted App and its history:
+
+- `GET /api/apps?include_deleted=true` lists soft-deleted Apps alongside active Apps (`?deleted=only` lists only soft-deleted Apps).
+- `GET /api/apps/{id}`, `GET /api/apps/{id}/commits`, `GET /api/apps/{id}/deployments`, `GET /api/apps/{id}/events`, and `GET /api/apps/{id}/logs` continue to work.
+
+After 30 days, judt permanently removes the App and its records.
+
+## Next steps
+
+- Edit files and run commands in [Sandboxes](/manage/concepts/sandbox).
+- Publish a commit to production in [Commits and deployments](/manage/concepts/deployments).
+- Configure `public`, `password`, or `private` access in [Previews and access](/manage/concepts/previews).

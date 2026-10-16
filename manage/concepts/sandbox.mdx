@@ -2,4 +2,164 @@
 title: "Sandboxes"
 description: "Where an App's source is edited and run, and when the sandbox starts and stops."
 ---
-A request that needs the sandbox starts it, and the sandbox stops when it's idle.
+Every App has an isolated Linux sandbox where you and your agents edit source files, run shell commands, manage Git commits, and test the App on a live dev server before publishing to production.
+
+## Sandbox lifecycle
+
+You do not need to start a sandbox manually. judt manages the sandbox lifecycle automatically:
+
+- **Created stopped**: When you create an App with `POST /api/apps`, its `sandbox_status` is `"stopped"`.
+- **Starts on demand**: Any request that reads or changes the sandbox starts it automatically. On the first start, judt initializes the `/app` working directory from the App's template.
+- **Stops when idle**: After 5 minutes with no API actions and no preview requests, judt commits any uncommitted changes in `/app`, saves a durable backup, and stops the sandbox.
+- **Manual stop**: Call `POST /api/apps/{id}/stop` to commit changes, back up `/app`, and stop the sandbox immediately.
+
+### Which endpoints start the sandbox
+
+| Behavior | Endpoints |
+| --- | --- |
+| **Starts the sandbox if stopped** | `/api/apps/{id}/files`, `/api/apps/{id}/files/{path}`, `/api/apps/{id}/git`, `POST /api/apps/{id}/command`, `POST /api/apps/{id}/commits`, `POST /api/apps/{id}/restore`, `POST /api/apps/{id}/preview`, `POST /api/apps/{id}/deployments` |
+| **Does not start the sandbox** | `GET /api/apps`, `GET /api/apps/{id}`, `PATCH /api/apps/{id}`, `GET /api/apps/{id}/commits`, `GET /api/apps/{id}/deployments`, `/api/apps/{id}/secrets`, `GET /api/apps/{id}/events`, `GET /api/apps/{id}/logs` |
+
+### Sandbox status values
+
+The `sandbox_status` field on the App object has one of these values:
+
+| Status | Meaning |
+| --- | --- |
+| `stopped` | The sandbox is not running. All committed files and auto-saved changes are stored in a durable recovery point. |
+| `starting` | The sandbox container is starting and restoring `/app`. Requests that need the sandbox wait for it to finish starting (up to 120 seconds). |
+| `running` | The sandbox is active and ready for file operations, commands, and preview requests. |
+| `stopping` | The sandbox is committing changes, saving a backup, and shutting down. |
+| `failed` | The sandbox failed to start. Check `sandbox_error` on the App object (`code`, `message`, `at`, `retry_at`). Sending a new sandbox request retries the start. |
+
+## Environment and limits
+
+Inside the sandbox, your App lives in `/app`:
+
+| Property | Value |
+| --- | --- |
+| Working directory | `/app` |
+| Linux user | `editor` |
+| Workspace storage limit | `384 MiB` (`413 storage_limit` when exceeded) |
+| Single file size limit (API) | `1 MiB` (`413 file_limit` when exceeded) |
+| Sandbox memory | `2 GiB` |
+| Dev server | `celld dev` on port `3000` (started on demand by `POST /api/apps/{id}/preview`) |
+
+### Reserved paths
+
+All file paths in the API are relative to `/app` and cannot start with `/` or contain `..`. The Files API blocks direct access to runtime, dependency, and Git metadata paths (`400 reserved_path`):
+
+- `.celld`
+- `.dev.vars` and `.dev.vars.*`
+- `.env` and `.env.*`
+- `node_modules`
+- `.git`
+- `dist`
+- `.cache`
+
+To install packages in `node_modules` or build output into `dist`, run a shell command with `POST /api/apps/{id}/command`. To set environment credentials, use [Secrets](/manage/concepts/secrets).
+
+## Read and write files
+
+### List and search files
+
+Call `GET /api/apps/{id}/files` to list files in `/app`, filter by glob, or search file contents:
+
+```bash
+curl "https://api.judt.ai/api/apps/$APP_ID/files?glob=src/**/*.ts&pattern=fetch" \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+| Query parameter | Description |
+| --- | --- |
+| `path` | Subdirectory under `/app` to list or search. |
+| `glob` | File name or path pattern, such as `*.js` or `src/**/*.ts`. |
+| `content` | Literal text substring to search for inside UTF-8 files. |
+| `pattern` | Perl-compatible regular expression (PCRE) to search for inside UTF-8 files. Cannot be combined with `content`. |
+| `sort` | `path` (default), `-path`, `size`, `-size`, `updated_at`, or `-updated_at`. |
+
+When you pass `content` or `pattern`, each matching file in `results` includes `match_count` and up to 20 `matches` (`[{ "line": 12, "text": "..." }]`).
+
+### Read a file
+
+Call `GET /api/apps/{id}/files/{path}` to read a file:
+
+```bash
+curl "https://api.judt.ai/api/apps/$APP_ID/files/src/index.js?lines=1-50" \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+- **Text files**: Returns JSON with `path`, `size`, `binary: false`, `content`, and `line_count` (or `lines` when you pass `?lines=120`, `?lines=120-180`, or `?lines=120-`).
+- **Binary files**: A JSON request returns metadata with `binary: true` and no `content`. Send `Accept: application/octet-stream` to download the raw bytes.
+- **ETag caching**: Every response includes an `ETag` header (the quoted SHA-256 hash of the file). Send `If-None-Match: "<etag>"` on later reads to receive `304 Not Modified` when the file has not changed.
+
+### Write or delete a file
+
+Call `PUT /api/apps/{id}/files/{path}` to create or replace a file (up to 1 MiB). Parent directories are created automatically.
+
+- **Text files**: Send `Content-Type: application/json` with `{"content": "..."}`.
+- **Binary files**: Send `Content-Type: application/octet-stream` with the raw file bytes as the request body.
+- **Concurrency control**: Send `If-Match: "<etag>"` to update the file only if its current `ETag` matches, or `If-None-Match: *` to create the file only if it does not exist yet. If the condition fails, the API returns `412 precondition_failed`.
+
+Call `DELETE /api/apps/{id}/files/{path}` to delete a file and clean up any empty parent directories. You can also pass `If-Match: "<etag>"` on `DELETE`.
+
+## Run shell commands
+
+Call `POST /api/apps/{id}/command` to run a shell command (`sh -c`) inside `/app`:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/command \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "command": "npm install zod && npm test",
+    "timeout_seconds": 60
+  }'
+```
+
+The command runs as `editor` in `/app` with the App's Secrets set as environment variables.
+
+```json
+{
+  "id": "act_9kL3mP7xQr2vW5nTc8YbZ4s",
+  "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "status": "completed",
+  "exit_code": 0,
+  "output": "\nadded 1 package in 842ms\n",
+  "truncated": false,
+  "started_at": "2026-10-15T20:10:00.000Z",
+  "finished_at": "2026-10-15T20:10:01.120Z"
+}
+```
+
+- `timeout_seconds`: `1` to `120` seconds (default `60`). If the command exceeds the timeout, the API terminates the process group and returns `status: "timed_out"`.
+- `exit_code`: A non-zero exit code still returns HTTP `200` with `status: "completed"`. Always check `exit_code` in the response body.
+- `output`: Combined `stdout` and `stderr`, up to `64 KiB` (`truncated: true` if output exceeded 64 KiB).
+
+## Inspect Git status, commits, and restore
+
+The `/app` directory is a Git repository.
+
+### Inspect uncommitted changes
+
+Call `GET /api/apps/{id}/git` with a `mode` query parameter:
+
+| `mode` | Output |
+| --- | --- |
+| `status` (default) | Current `head` SHA, `clean` boolean, and `files` list (`path`, `status`, `previous_path`). |
+| `diff` | Unified diff (`diff` text and `truncated` boolean) of uncommitted changes against `HEAD`. |
+| `stat` | Diffstat summary of changed files and line counts. |
+| `history` | Recent Git commit log from the sandbox repository. |
+
+### Commit changes
+
+Call `POST /api/apps/{id}/commits` with a single-line `message` (`1` to `240` characters) to stage all changes in `/app`, create a Git commit, and save a durable backup (`recovery_point_id`). If no files have changed since `HEAD`, the API returns `409 nothing_to_commit`.
+
+### Restore an earlier commit
+
+Call `POST /api/apps/{id}/restore` with `{"commit_id": "cmt_..."}` to reset the sandbox working tree (`/app`) to that commit. Restoring a commit updates the sandbox only; it does not change what is running in production until you deploy.
+
+## Next steps
+
+- Test your sandbox on the dev server in [Previews and access](/manage/concepts/previews) and [Test on the dev server](/build/dev-server).
+- Publish a commit to production in [Commits and deployments](/manage/concepts/deployments).

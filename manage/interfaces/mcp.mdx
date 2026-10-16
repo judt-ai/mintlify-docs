@@ -2,4 +2,187 @@
 title: "MCP server"
 description: "Connect an agent that supports the Model Context Protocol to judt."
 ---
-Each MCP tool call is a judt API request, with the same authentication, validation, and errors.
+
+The judt Model Context Protocol (MCP) server exposes every operation of the [REST API](/manage/interfaces/api) as an MCP tool. Agents connected to the MCP server can create Apps, read and edit files, run shell commands, preview on the dev server, commit and deploy changes, and inspect events and logs.
+
+## Server URL and transport
+
+| Setting | Value |
+| --- | --- |
+| **MCP endpoint URL** | `https://api.judt.ai/mcp` |
+| **Transport** | Streamable HTTP |
+| **Supported protocol versions** | `2026-07-28`, `2025-11-25` |
+| **MCP Server Card** | `https://api.judt.ai/mcp/server-card` |
+| **Authentication** | OAuth 2.1 (Authorization Code + PKCE or Device Code) or Bearer API key (`judt_...`) |
+
+## Connect with OAuth
+
+MCP clients that support OAuth 2.1—such as Claude Code, Cursor, VS Code, claude.ai, and ChatGPT—can connect to `https://api.judt.ai/mcp` without an API key:
+
+<Steps>
+  <Step title="Add the MCP server URL">
+    In your MCP client, add a Streamable HTTP server with the URL `https://api.judt.ai/mcp` and no `Authorization` header.
+
+    For example, in Claude Code:
+
+    ```bash
+    claude mcp add --transport http judt https://api.judt.ai/mcp
+    ```
+  </Step>
+  <Step title="Approve access in your browser">
+    When your client opens the judt sign-in page, sign in, choose your organization, select the scopes to grant (**View Apps** for `apps:read`, **Change Apps** for `apps:write`), and click **Allow**.
+  </Step>
+</Steps>
+
+An OAuth connection grants access to all Apps in the selected organization. To restrict an agent to a single App, connect with an App-scoped API key instead. See [Give an agent access to an App](/manage/guides/agent-access).
+
+## Connect with an API key
+
+You can also authenticate to the MCP server with an API key (`judt_...`) created on the [API keys](https://judt.ai/api-keys) page. Put the key in an environment variable first:
+
+```bash
+read -rs JUDT_API_KEY && export JUDT_API_KEY
+```
+
+Select your MCP client and follow the steps:
+
+<Tabs>
+  <Tab title="Claude Code">
+    Add the server with an `Authorization` header:
+
+    ```bash
+    claude mcp add --transport http judt https://api.judt.ai/mcp \
+      --header "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    Start Claude Code and enter `/mcp` to verify that `judt` shows **connected**.
+  </Tab>
+  <Tab title="Codex">
+    Add the following lines to `~/.codex/config.toml`:
+
+    ```toml ~/.codex/config.toml
+    [mcp_servers.judt]
+    url = "https://api.judt.ai/mcp"
+    bearer_token_env_var = "JUDT_API_KEY"
+    ```
+
+    Start Codex from a shell where `JUDT_API_KEY` is exported.
+  </Tab>
+  <Tab title="Cursor">
+    Add the `judt` server to `~/.cursor/mcp.json`:
+
+    ```json ~/.cursor/mcp.json
+    {
+      "mcpServers": {
+        "judt": {
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer JUDT_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+
+    Replace `JUDT_API_KEY` with your API key. Keep this file in your home directory, not inside a shared repository.
+  </Tab>
+  <Tab title="VS Code">
+    Add the `judt` server to `.vscode/mcp.json`:
+
+    ```json .vscode/mcp.json
+    {
+      "inputs": [
+        {
+          "type": "promptString",
+          "id": "judt-api-key",
+          "description": "judt API key",
+          "password": true
+        }
+      ],
+      "servers": {
+        "judt": {
+          "type": "http",
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer ${input:judt-api-key}"
+          }
+        }
+      }
+    }
+    ```
+
+    When the server starts, VS Code prompts you for the key and stores it in secret storage.
+  </Tab>
+</Tabs>
+
+## Available MCP tools
+
+The MCP server provides 26 tools across 8 groups. Each tool accepts the same parameters as its corresponding REST API endpoint, plus an optional `idempotency_key` on mutating tools.
+
+<Tip>
+  Many `list_*` tools also fetch a single resource when you pass that resource's ID parameter (for example, `list_apps` with `app_id`, `list_deployments` with `deployment_id`, `list_sessions` with `session_id`, or `list_turns` with `turn_id`).
+</Tip>
+
+### Apps and templates
+
+| Tool | Scope | REST endpoint | Description |
+| --- | --- | --- | --- |
+| `list_apps` | `apps:read` | `GET /api/apps`, `GET /api/apps/{id}` | List Apps in the organization, or get one App when `app_id` is passed. |
+| `create_app` | `apps:write` | `POST /api/apps` | Create a new App from a template. |
+| `update_app` | `apps:write` | `PATCH /api/apps/{id}` | Update an App's `name`, `slug`, or `production` visibility and password. |
+| `delete_app` | `apps:write` | `DELETE /api/apps/{id}` | Soft-delete an App, unpublish production, and remove its sandbox. |
+| `create_access_token` | `apps:write` | `POST /api/apps/{id}/access` | Mint a 5-minute access token for a `password` or `private` published App. |
+| `list_templates` | `apps:read` | `GET /api/templates` | List available starter templates. |
+
+### Files and sandbox
+
+| Tool | Scope | REST endpoint | Description |
+| --- | --- | --- | --- |
+| `list_files` | `apps:read` | `GET /api/apps/{id}/files` | List files in `/app`, filter by `glob`, or search contents with `content` or `pattern`. |
+| `read_file` | `apps:read` | `GET /api/apps/{id}/files/{path}` | Read a UTF-8 text file (whole file or `lines` range) and its `etag`, or inspect binary metadata. |
+| `write_file` | `apps:write` | `PUT /api/apps/{id}/files/{path}` | Create or replace a UTF-8 text file in `/app`, with optional `if_match` or `if_none_match`. |
+| `delete_file` | `apps:write` | `DELETE /api/apps/{id}/files/{path}` | Delete a file in `/app` and clean up empty directories, with optional `if_match`. |
+| `git_info` | `apps:read` | `GET /api/apps/{id}/git` | Inspect sandbox Git `status`, `diff`, `stat`, or `history`. |
+| `run_command` | `apps:write` | `POST /api/apps/{id}/command` | Run a shell command in `/app` (`timeout_seconds` `1` to `120`, default `60`). |
+| `create_preview` | `apps:write` | `POST /api/apps/{id}/preview` | Start the sandbox dev server (`celld dev`), verify the build, and return a 5-minute preview URL. |
+| `stop_sandbox` | `apps:write` | `POST /api/apps/{id}/stop` | Commit changes, save a backup, and stop the sandbox immediately. |
+
+### Commits, deployments, Secrets, and monitoring
+
+| Tool | Scope | REST endpoint | Description |
+| --- | --- | --- | --- |
+| `create_commit` | `apps:write` | `POST /api/apps/{id}/commits` | Stage all changes in `/app`, create a Git commit, and save a durable backup. |
+| `list_commits` | `apps:read` | `GET /api/apps/{id}/commits` | List commits for an App. |
+| `restore_commit` | `apps:write` | `POST /api/apps/{id}/restore` | Reset `/app` in the sandbox to a commit (`commit_id: "cmt_..."`). |
+| `deploy` | `apps:write` | `POST /api/apps/{id}/deployments` | Build and publish the sandbox `HEAD` commit (or a 40-char `commit` SHA) to production. |
+| `list_deployments` | `apps:read` | `GET /api/apps/{id}/deployments`, `GET .../deployments/{deployment_id}` | List deployments or get one deployment when `deployment_id` is passed. |
+| `unpublish_app` | `apps:write` | `POST /api/apps/{id}/unpublish` | Take the production App offline without deleting the App or its data. |
+| `list_secrets` | `apps:read` | `GET /api/apps/{id}/secrets`, `GET .../secrets/{secret}` | List Secret names and metadata, or check one Secret by name or ID. |
+| `set_secret` | `apps:write` | `PUT /api/apps/{id}/secrets` | Create or update a Secret (`name` and `value`). |
+| `delete_secret` | `apps:write` | `DELETE /api/apps/{id}/secrets/{secret}` | Delete a Secret by name or `sec_...` ID. |
+| `list_events` | `apps:read` | `GET /api/apps/{id}/events` | List platform events (`sandbox`, `deployment`, `deletion`). |
+| `list_logs` | `apps:read` | `GET /api/apps/{id}/logs` | List or search development and production runtime logs. |
+
+### In-product agent sessions
+
+| Tool | Scope | REST endpoint | Description |
+| --- | --- | --- | --- |
+| `list_models` | `apps:read` | `GET /api/models` | List models available for the in-product agent. |
+| `create_session` | `apps:write` | `POST /api/apps/{id}/sessions` | Create a new agent chat session on an App. |
+| `list_sessions` | `apps:read` | `GET /api/apps/{id}/sessions`, `GET .../sessions/{session_id}` | List sessions or get one session when `session_id` is passed. |
+| `update_session` | `apps:write` | `PATCH /api/apps/{id}/sessions/{session_id}` | Update a session's `title`, `model`, or `effort`. |
+| `delete_session` | `apps:write` | `DELETE /api/apps/{id}/sessions/{session_id}` | Delete an agent session and its turns. |
+| `create_turn` | `apps:write` | `POST /api/apps/{id}/sessions/{session_id}/turns` | Send a user prompt to start or queue an agent turn. |
+| `list_turns` | `apps:read` | `GET /api/apps/{id}/sessions/{session_id}/turns`, `GET .../turns/{turn_id}` | List turns in a session or get one turn when `turn_id` is passed. |
+| `cancel_turn` | `apps:write` | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/cancel` | Cancel a queued, running, or waiting turn. |
+| `decline_input` | `apps:write` | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/decline` | Decline a pending Secret request on a waiting turn so the agent continues without it. |
+| `list_session_events` | `apps:read` | `GET /api/apps/{id}/sessions/{session_id}/events` | Read a page of structured transcript events (`after`, `limit`). |
+
+<Warning>
+  Calling `set_secret` through an MCP client sends the Secret value through the model's context window. To keep Secret values out of model transcripts, set Secrets in the judt dashboard or directly via `PUT /api/apps/{id}/secrets`.
+</Warning>
+
+## Next steps
+
+- Scope an agent to a single App in [Give an agent access to an App](/manage/guides/agent-access).
+- Learn about the built-in judt agent in [In-product agent](/manage/interfaces/agent).

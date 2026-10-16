@@ -2,4 +2,152 @@
 title: "Troubleshoot an App"
 description: "Use App events to see what happened to an App, and App logs to see what its code did."
 ---
-App events record what happened to the sandbox, deployments, and deletion. App logs record requests, output, exceptions, and failed builds.
+judt gives you two observability streams for every App:
+
+- **App events (`/api/apps/{id}/events`)** record platform lifecycle transitions, actions, and errors across the sandbox, deployments, and App deletion.
+- **App logs (`/api/apps/{id}/logs`)** capture HTTP request logs, `console.*` output, uncaught exceptions, bundler errors, and runtime transitions from both the development sandbox and production.
+
+Both endpoints work without starting the sandbox and remain readable for 30 days after an App is soft-deleted.
+
+## Inspect platform state with App events
+
+Call `GET /api/apps/{id}/events` when a sandbox fails to start, a command or write action is blocked, or a deployment fails:
+
+```bash
+curl "https://api.judt.ai/api/apps/$APP_ID/events?kind=error,blocked&limit=20" \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+Each item in `results` is an `AppEvent` (`evt_...`):
+
+```json
+{
+  "id": "evt_7mK2pQ9xRtV4nW6sLc3ZbY8j",
+  "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "category": "deployment",
+  "kind": "error",
+  "subject": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+  "code": "build_failed",
+  "summary": "npm run build exited with code 1",
+  "detail": {
+    "exit_code": 1,
+    "output": "src/index.ts(14,5): error TS2322: Type 'number' is not assignable to type 'string'."
+  },
+  "created_at": "2026-10-15T20:40:00.000Z"
+}
+```
+
+### Filter App events
+
+You can pass comma-separated values to `category`, `kind`, and `subject`:
+
+| Query parameter | Allowed values | Description |
+| --- | --- | --- |
+| `category` | `sandbox`, `deployment`, `deletion` | Which subsystem produced the event. |
+| `kind` | `transition`, `action`, `error`, `blocked`, `resolved` | Type of event. Filter by `kind=error,blocked` to find failures or stuck work. |
+| `subject` | `sandbox`, `deletion`, a deployment ID (`dep_...`), or a sandbox action ID (`act_...`) | Narrow events to one specific deployment or sandbox action. |
+| `sort` | `-created_at` (default), `created_at` | Order events newest-first or oldest-first. |
+
+## Inspect code execution with App logs
+
+Call `GET /api/apps/{id}/logs` to see what your Worker code, the dev server, or the production runtime wrote to the logs:
+
+```bash
+curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=production&level=warn,error&limit=50" \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+Each item in `results` is a `LogEntry`:
+
+```json
+{
+  "timestamp": "2026-10-15T20:42:11.304Z",
+  "environment": "production",
+  "source": "app",
+  "level": "error",
+  "event": "exception",
+  "message": "TypeError: Cannot read properties of undefined (reading 'id')",
+  "deployment_id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "data": {
+    "name": "TypeError",
+    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at Object.fetch (index.js:18:22)"
+  }
+}
+```
+
+### Filter App logs
+
+| Query parameter | Values | Description |
+| --- | --- | --- |
+| `environment` | `development`, `production` | Filter to the sandbox dev server (`development`) or the published App (`production`). |
+| `source` | `request`, `app`, `dev_server`, `runtime`, `deployment`, `platform` | Component that emitted the log entry (comma-separated). |
+| `level` | `debug`, `info`, `warn`, `error` | Log severity (comma-separated, such as `level=warn,error`). |
+| `event` | String (comma-separated) | Specific structured event name (see table below). |
+| `search` | String (`1` to `200` chars) | Case-insensitive substring match against `message`. |
+| `deployment_id` | `dep_...` | Filter logs to a specific deployment. |
+| `trace_id` | 32-char lowercase hex | Return every log entry (`request`, `console.*`, `exception`) emitted during a single HTTP request. |
+| `since`, `until` | ISO 8601 timestamp | Time window bounds. Defaults to the last **24 hours** when `since` is omitted. |
+
+### Log sources and notable `event` names
+
+| `source` | What it records | Notable `event` values |
+| --- | --- | --- |
+| `request` | Every incoming HTTP request handled by your Worker (`method`, `path`, `status`, `duration_ms` in `data`). | — |
+| `app` | Your Worker's `console.log`, `console.warn`, `console.error`, and uncaught exceptions. | `exception` (uncaught error in a handler) |
+| `dev_server` | Sandbox `celld dev` bundler and hot-reload output. | `dev.build_failed`, `dev.exited` |
+| `deployment` | Build and migration output during `POST /api/apps/{id}/deployments`. | `deployment.failed` |
+| `runtime` | Production instance lifecycle transitions. | `instance.transition` |
+| `platform` | Log pipeline notices. | `telemetry.capped` (log rate limit reached for a request) |
+
+## Common troubleshooting scenarios
+
+### 1. An HTTP request to the App returns `500`
+
+1. Find the failing request in the logs:
+   ```bash
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=production&source=request,app&level=error" \
+     -H "Authorization: Bearer $JUDT_API_KEY"
+   ```
+2. Copy the `trace_id` from the failing log entry.
+3. Fetch every log line from that request in chronological order:
+   ```bash
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?trace_id=TRACE_ID&sort=timestamp" \
+     -H "Authorization: Bearer $JUDT_API_KEY"
+   ```
+   Replace `TRACE_ID` with the 32-character hex `trace_id`.
+
+### 2. `POST /api/apps/{id}/preview` returns `422 preview_failed`
+
+The sandbox dev server (`celld dev`) could not bundle or start your entry module:
+
+1. Read `error.detail` in the `422` response body for the compiler output.
+2. You can also query dev server build failures directly:
+   ```bash
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=development&source=dev_server&event=dev.build_failed" \
+     -H "Authorization: Bearer $JUDT_API_KEY"
+   ```
+
+### 3. `POST /api/apps/{id}/deployments` fails
+
+1. Inspect `failure_code` and `failure_message` on the returned `Deployment` object (`GET /api/apps/{id}/deployments/{deployment_id}`).
+2. Query the events for that deployment ID to see the exact build or migration output:
+   ```bash
+   curl "https://api.judt.ai/api/apps/$APP_ID/events?subject=$DEPLOYMENT_ID" \
+     -H "Authorization: Bearer $JUDT_API_KEY"
+   ```
+3. Check the deployment logs:
+   ```bash
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?deployment_id=$DEPLOYMENT_ID&sort=timestamp" \
+     -H "Authorization: Bearer $JUDT_API_KEY"
+   ```
+
+### 4. A Secret change is not visible in the App
+
+- **In the sandbox**: Changes to Secrets take effect on the next sandbox start. Call `POST /api/apps/{id}/stop` to stop the sandbox, and then send your next preview or command request.
+- **In production**: Changes to Secrets take effect on the next deployment. Call `POST /api/apps/{id}/deployments` to publish a new deployment with the updated Secret values.
+
+## Next steps
+
+- Learn how deployments and rollbacks work in [Publish and unpublish an App](/manage/guides/publish).
+- Check API status codes and retry rules in [REST API](/manage/interfaces/api#errors).

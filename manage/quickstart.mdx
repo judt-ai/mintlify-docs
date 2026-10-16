@@ -2,4 +2,261 @@
 title: "Quickstart"
 description: "Create an App, change a file, and publish it with the judt API."
 ---
-This page shows how to create an App, write a file in its sandbox, commit the change, and publish the commit.
+This guide shows how to use the judt API from a terminal. You create an API key, and then you use the key to create an App, change its code, preview it in the sandbox, and publish it to production.
+
+At the end of the guide, you get an agent prompt that tells a coding agent how to do the same work for you.
+
+## Before you begin
+
+You need the following:
+
+- A judt account. To sign in, go to [judt.ai](https://judt.ai/apps).
+- A terminal that has `curl`.
+
+Each request in this guide goes to the base URL `https://api.judt.ai`.
+
+## Create an API key
+
+An API key gives access to the judt API. The key acts as you in one organization.
+
+<Steps>
+  <Step title="Open the API keys page">
+    In the judt dashboard, go to [API keys](https://judt.ai/api-keys).
+  </Step>
+  <Step title="Start a new key">
+    Click **Create key**. If the organization has no keys yet, click **Create your first key**.
+  </Step>
+  <Step title="Set the key properties">
+    Set the following fields:
+
+    - **Name**: a name for where you use the key, such as `Laptop CLI`.
+    - **App**: select **All apps**. A key for all Apps can create new Apps. A key scoped to one App cannot create Apps.
+    - **Expires**: select when the key stops working.
+
+    Click **Create key**.
+  </Step>
+  <Step title="Copy the key">
+    Click **Copy**, and then click **Done**.
+
+    <Warning>
+      The dashboard shows the key one time only. If you lose the key, revoke it and create a new key.
+    </Warning>
+  </Step>
+</Steps>
+
+An API key starts with `judt_`. For more information about API keys and OAuth tokens, see [Authentication](/manage/authentication).
+
+## Store the key
+
+Keep the key out of your shell history and out of your source files. Put the key in an environment variable:
+
+```bash
+read -rs JUDT_API_KEY && export JUDT_API_KEY
+```
+
+The command waits for input. Paste the key, and then press **Enter**. The terminal does not print the key.
+
+## Send your first request
+
+List the Apps in your organization:
+
+```bash
+curl https://api.judt.ai/api/apps \
+  -H "Authorization: Bearer $JUDT_API_KEY"
+```
+
+The response is similar to the following:
+
+```json
+{
+  "results": [],
+  "total": 0,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+If the response has status `401`, then the key is incorrect, expired, or revoked. Make sure that the `JUDT_API_KEY` variable contains the full key.
+
+## Create an App
+
+Create an App from the default Hello template. The Hello template contains a Worker that returns a greeting for each request.
+
+```bash
+curl -X POST https://api.judt.ai/api/apps \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My first App"}'
+```
+
+The response is similar to the following:
+
+```json
+{
+  "id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "name": "My first App",
+  "slug": "plucky-teal-tatooine",
+  "domain": null,
+  "url": "https://plucky-teal-tatooine.judt.dev",
+  "sandbox_status": "stopped",
+  "production": {
+    "visibility": "public",
+    "password_updated_at": null,
+    "status": "unpublished",
+    "deployment_id": null,
+    "failure_code": null,
+    "observed_at": "2026-10-15T20:00:00.000Z"
+  },
+  ...
+}
+```
+
+The API generates a unique `slug` for the App and sets its `url`. Nothing is published yet (`production.status` is `"unpublished"`), so the URL does not serve the App until you deploy.
+
+Put the App ID in an environment variable:
+
+```bash
+export APP_ID=APP_ID
+```
+
+Replace `APP_ID` with the value of the `id` field from the response.
+
+## Change the code
+
+Each App has a sandbox that holds its source files and runs a dev server. The sandbox starts automatically when a request needs it, so the first request to a stopped sandbox takes a few extra seconds.
+
+<Steps>
+  <Step title="Read the entry file">
+    Get `index.js` from the sandbox:
+
+    ```bash
+    curl https://api.judt.ai/api/apps/$APP_ID/files/index.js \
+      -H "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    The `content` field of the response contains the UTF-8 source code of the file.
+  </Step>
+  <Step title="Write the new code">
+    Replace `index.js` with code that returns a new greeting:
+
+    ```bash
+    curl -X PUT https://api.judt.ai/api/apps/$APP_ID/files/index.js \
+      -H "Authorization: Bearer $JUDT_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"content": "export default {\n  async fetch() {\n    return new Response(\"Hello from my first App.\\n\");\n  },\n};\n"}'
+    ```
+  </Step>
+  <Step title="Preview the change in the sandbox">
+    Create a preview URL for the dev server:
+
+    ```bash
+    curl -X POST https://api.judt.ai/api/apps/$APP_ID/preview \
+      -H "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    Open the URL from the `url` field in a browser. The page shows `Hello from my first App.` The preview link expires after `expires_in` seconds (`300`, or 5 minutes).
+  </Step>
+</Steps>
+
+## Commit the change
+
+A commit records a snapshot of the App's source in Git and creates a durable backup. Deployments always publish a commit, not uncommitted files in the sandbox.
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/commits \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Change the greeting"}'
+```
+
+The `commit_sha` field in the response is the 40-character Git SHA of the new commit.
+
+## Publish the App
+
+Publish the current `HEAD` commit of the sandbox to production:
+
+```bash
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+The request builds the App, publishes the bundle, verifies that the runtime is serving, and returns the completed deployment:
+
+```json
+{
+  "id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+  "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
+  "source_commit": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+  "publication_status": "published",
+  "activation_status": "active",
+  ...
+}
+```
+
+Send a request to the published App:
+
+```bash
+curl APP_URL
+```
+
+Replace `APP_URL` with the `url` field from the App object (for example, `https://plucky-teal-tatooine.judt.dev`).
+
+The response is:
+
+```text
+Hello from my first App.
+```
+
+<Note>
+  If a write request returns status `503` or `504`, the operation may still finish on the server. Send an `Idempotency-Key` header with your write requests so you can safely retry with the same key. See [REST API — Idempotency and retries](/manage/interfaces/api#idempotency-and-retries).
+</Note>
+
+## Give the work to an agent
+
+A coding agent can run these same API calls for you when it has a shell and the `JUDT_API_KEY` environment variable.
+
+To restrict the agent to a single App, create an App-scoped API key on the **API keys** page. See [Give an agent access to an App](/manage/guides/agent-access).
+
+Copy the following prompt to your agent. Replace `TASK` with what you want the agent to build, such as `Add an endpoint at /time that returns the current UTC time as JSON, and publish the App.`
+
+```text Agent prompt
+You manage a judt App with the judt API. Do the task at the end of this prompt.
+
+Access:
+- The base URL is https://api.judt.ai.
+- The API key is in the JUDT_API_KEY environment variable.
+- Send the key in each request in this header: Authorization: Bearer $JUDT_API_KEY
+- Do not show the key in your output. Do not write the key to a file.
+
+Reference:
+- Get the OpenAPI document from https://api.judt.ai/api/openapi.json before you start.
+- Use the OpenAPI document as the reference for each endpoint, parameter, and response.
+
+Procedure:
+1. Find the App with GET /api/apps. If the task needs a new App, create it with POST /api/apps.
+2. Read the files before you change them. Use GET /api/apps/{id}/files and GET /api/apps/{id}/files/{path}.
+3. Write each changed file with PUT /api/apps/{id}/files/{path}.
+4. Test the change in the sandbox. Run commands with POST /api/apps/{id}/command. Get a preview URL with POST /api/apps/{id}/preview.
+5. Commit the change with POST /api/apps/{id}/commits. Write a one-line message that states what changed.
+6. Publish the commit with POST /api/apps/{id}/deployments only if the task tells you to publish.
+7. Tell me the App URL, the commit SHA, and the deployment status.
+
+Rules:
+- The App is a Workers-style JavaScript app. The wrangler.json file sets the entry module.
+- Send an Idempotency-Key header with each POST, PUT, PATCH, and DELETE request. Use a new key for each new operation.
+- If a request returns 503 or 504, send the same request again with the same Idempotency-Key.
+- If a request returns an error, read the error code and the error message. Correct the cause before you try again.
+- Do not delete an App, a file, or a Secret unless the task tells you to.
+
+Task:
+TASK
+```
+
+## Next steps
+
+- Learn how commits, builds, and rollbacks work in [Commits and deployments](/manage/concepts/deployments).
+- Connect an MCP client such as Claude Code, Cursor, or VS Code in [MCP server](/manage/interfaces/mcp).
+- Learn how to write Worker code and configure bindings in [Build Apps](/build/introduction).
+- Browse all endpoints in the [API reference](/api-reference/introduction).

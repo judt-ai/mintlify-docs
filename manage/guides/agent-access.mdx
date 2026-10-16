@@ -3,4 +3,100 @@ title: "Give an agent access to an App"
 sidebarTitle: "Give an agent access"
 description: "Create an App-scoped token and connect your agent to one App."
 ---
-This guide shows how to limit an agent to one App with a scoped API token.
+
+When you give an external coding agent access to judt, you can scope its credential to **one specific App**. An App-scoped API key lets the agent edit files, run commands, preview, commit, and deploy that App without seeing or modifying any other App in your organization.
+
+## Choose how to connect the agent
+
+| Goal | Credential to use |
+| --- | --- |
+| Restrict the agent to **one App** | Create an **App-scoped API key** and pass it to the MCP server or the REST API. |
+| Let the agent create new Apps and manage **all Apps** in your organization | Connect with **OAuth** (browser or device sign-in) or an **All apps API key**. See [Authentication](/manage/authentication). |
+
+## Step 1: Create an App-scoped API key
+
+<Steps>
+  <Step title="Make sure the App exists">
+    In the [judt dashboard](https://judt.ai/apps), select the App that the agent will work on, or click **New App** to create it first.
+  </Step>
+  <Step title="Open the API keys page">
+    Go to [API keys](https://judt.ai/api-keys) and click **Create key**.
+  </Step>
+  <Step title="Scope the key to the App">
+    Set the following fields:
+
+    - **Name**: the name of the agent and App, such as `Claude Code — Customer Portal`.
+    - **App**: select your App instead of **All apps**.
+    - **Expires**: choose an expiration window, such as `7 days` or `30 days`.
+
+    Click **Create key** and copy the key (`judt_...`).
+  </Step>
+  <Step title="Export the key in your shell">
+    Store the key in an environment variable so it does not appear in your shell history or source code:
+
+    ```bash
+    read -rs JUDT_API_KEY && export JUDT_API_KEY
+    ```
+  </Step>
+</Steps>
+
+## What an App-scoped key can and cannot do
+
+An App-scoped API key acts with your organization role (`owner`, `admin`, or `member`) on the selected App only:
+
+- **Allowed**: Read the App (`GET /api/apps` returns only that App), read and write files, run commands, inspect Git status, create and restore commits, create preview links, and (if your role is `owner` or `admin`) manage Secrets and publish deployments for that App.
+- **Blocked**:
+  - `POST /api/apps` returns `403 app_scoped_token`.
+  - Any request to `/api/apps/{other_id}` or `/api/apps/{other_id}/*` returns `404 not_found`.
+
+<Tip>
+  If you want an agent to edit and test code in the sandbox without being able to deploy to production, delete the App, or change Secrets, create the App-scoped API key from an organization account with the `member` role.
+</Tip>
+
+## Step 2: Connect the agent
+
+You can connect the agent through the **MCP server** or through the **REST API**.
+
+<Tabs>
+  <Tab title="MCP server (recommended)">
+    Add the judt MCP server (`https://api.judt.ai/mcp`) to your client with the App-scoped key in the `Authorization` header.
+
+    For Claude Code:
+
+    ```bash
+    claude mcp add --transport http judt https://api.judt.ai/mcp \
+      --header "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    For Codex, Cursor, and VS Code configuration files, see [MCP server — Connect with an API key](/manage/interfaces/mcp#connect-with-an-api-key).
+
+    Then give the agent its task:
+
+    ```text
+    You manage my judt App through the judt MCP server.
+    1. Call list_apps to find the App you have access to.
+    2. Read wrangler.json and the source files with list_files and read_file.
+    3. Make the requested changes with write_file and test them with create_preview.
+    4. Commit your changes with create_commit.
+    ```
+  </Tab>
+  <Tab title="REST API / curl">
+    If your agent runs shell commands instead of MCP tools, start it in a shell where `JUDT_API_KEY` is exported and instruct it to read `https://judt.ai/llms.txt` or `https://api.judt.ai/api/openapi.json`:
+
+    ```text
+    You manage a judt App with the judt REST API at https://api.judt.ai.
+    Authenticate every request with the header: Authorization: Bearer $JUDT_API_KEY
+    Read https://api.judt.ai/api/openapi.json for all endpoints and schemas.
+    Start by calling GET https://api.judt.ai/api/apps to get the App ID.
+    ```
+  </Tab>
+</Tabs>
+
+## Revoke access when finished
+
+When the agent finishes its work, go to [API keys](https://judt.ai/api-keys) and click **Revoke** next to the key. Any future request with that key immediately returns `401 unauthenticated`.
+
+## Next steps
+
+- Learn about OAuth sign-in and organization roles in [Authentication](/manage/authentication).
+- See all 26 MCP tools in [MCP server](/manage/interfaces/mcp).
