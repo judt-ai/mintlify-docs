@@ -1,10 +1,10 @@
 ---
-title: "Give an agent access to an App"
+title: "Give an agent access to a single App"
 sidebarTitle: "Give an agent access"
 description: "Create an App-scoped token and connect your agent to one App."
 ---
 
-When you give an external coding agent access to judt, you can scope its credential to **one specific App**. An App-scoped API key lets the agent edit files, run commands, preview, commit, and deploy that App without seeing or modifying any other App in your organization.
+When you give an external coding agent access to Judt, you can scope its credential to **one specific App**. An App-scoped API key lets the agent edit files, run commands, preview, commit, and deploy that App without seeing or modifying any other App in your organization.
 
 ## Choose how to connect the agent
 
@@ -17,7 +17,7 @@ When you give an external coding agent access to judt, you can scope its credent
 
 <Steps>
   <Step title="Make sure the App exists">
-    In the [judt dashboard](https://judt.ai/apps), select the App that the agent will work on, or click **New App** to create it first.
+    In the [Judt dashboard](https://judt.ai/apps), select the App that the agent will work on, or click **New App** to create it first.
   </Step>
   <Step title="Open the API keys page">
     Go to [API keys](https://judt.ai/api-keys) and click **Create key**.
@@ -59,7 +59,7 @@ You can connect the agent through the **MCP server** or through the **REST API**
 
 <Tabs>
   <Tab title="MCP server (recommended)">
-    Add the judt MCP server (`https://api.judt.ai/mcp`) to your client with the App-scoped key in the `Authorization` header.
+    Add the Judt MCP server (`https://api.judt.ai/mcp`) to your client with the App-scoped key in the `Authorization` header.
 
     For Claude Code:
 
@@ -73,7 +73,7 @@ You can connect the agent through the **MCP server** or through the **REST API**
     Then give the agent its task:
 
     ```text
-    You manage my judt App through the judt MCP server.
+    You manage my Judt App through the Judt MCP server.
     1. Call list_apps to find the App you have access to.
     2. Read wrangler.json and the source files with list_files and read_file.
     3. Make the requested changes with write_file and test them with create_preview.
@@ -84,7 +84,7 @@ You can connect the agent through the **MCP server** or through the **REST API**
     If your agent runs shell commands instead of MCP tools, start it in a shell where `JUDT_API_KEY` is exported and instruct it to read `https://judt.ai/llms.txt` or `https://api.judt.ai/api/openapi.json`:
 
     ```text
-    You manage a judt App with the judt REST API at https://api.judt.ai.
+    You manage a Judt App with the Judt REST API at https://api.judt.ai.
     Authenticate every request with the header: Authorization: Bearer $JUDT_API_KEY
     Read https://api.judt.ai/api/openapi.json for all endpoints and schemas.
     Start by calling GET https://api.judt.ai/api/apps to get the App ID.

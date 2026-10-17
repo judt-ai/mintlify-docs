@@ -2,7 +2,8 @@
 title: "npm packages and builds"
 description: "Add npm dependencies, and add a build step for TypeScript, JSX, or a frontend bundler."
 ---
-An App can use npm packages and a build step. At deploy, judt installs the dependencies from the `package-lock.json` file, runs the `build` script if there is one, and then celld, the judt runtime, bundles the entry module with esbuild. The dev server prepares the App the same way. Use this page to add a dependency, add TypeScript or JSX, or deploy the output of a frontend bundler.
+
+An App can use npm packages and a build step. At deploy, Judt installs the dependencies from the `package-lock.json` file, runs the `build` script if there is one, and then celld, the Judt runtime, bundles the entry module with esbuild. The dev server prepares the App the same way. Use this page to add a dependency, add TypeScript or JSX, or deploy the output of a frontend bundler.
 
 ## Add an npm package
 
@@ -18,7 +19,7 @@ We recommend packages that run on web APIs. celld supports only a subset of the 
 
 ### Dependency rules
 
-judt installs dependencies only from the public npm registry, and install scripts never run. A package that needs a `postinstall` step or a native binary doesn't work.
+Judt installs dependencies only from the public npm registry, and install scripts never run. A package that needs a `postinstall` step or a native binary doesn't work.
 
 Deploy checks the `dependencies`, `devDependencies`, and `optionalDependencies` fields of the `package.json` file, and refuses a source with the `unsupported_dependencies` code if it has any of the following:
 
@@ -67,14 +68,14 @@ The following example compiles TypeScript with `tsc`. The `tsconfig.json` file, 
 
 ### How deploy runs the build
 
-At deploy, judt runs `npm ci`, and then `npm run build`. The build runs under the following conditions:
+At deploy, Judt runs `npm ci`, and then `npm run build`. The build runs under the following conditions:
 
 - The build gets no Secrets.
 - The build has no network access except to the npm registry.
 - The install and the build together must finish within 5 minutes.
 - `pre` and `post` scripts, such as `prebuild`, don't run.
 - After the build, the entry module that `main` names must exist.
-- The build must not leave symbolic links, hard links, or special files. judt removes the `node_modules/.bin` directories before it checks.
+- The build must not leave symbolic links, hard links, or special files. Judt removes the `node_modules/.bin` directories before it checks.
 
 If the build fails, then deploy stops with one of the following codes:
 

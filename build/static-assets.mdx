@@ -2,7 +2,7 @@
 title: "Static assets"
 description: "Serve HTML, CSS, browser JavaScript, icons, and fonts that ship with the code."
 ---
-Static assets are files that ship with the App's code, such as HTML, CSS, browser JavaScript, icons, and fonts. celld, the judt runtime, serves them directly, without running the Worker. Assets are part of the deployed version, and code can't write to them. For files that the App creates or receives at runtime, use R2. For more information, see [R2](/build/storage/r2).
+Static assets are files that ship with the App's code, such as HTML, CSS, browser JavaScript, icons, and fonts. celld, the Judt runtime, serves them directly, without running the Worker. Assets are part of the deployed version, and code can't write to them. For files that the App creates or receives at runtime, use R2. For more information, see [R2](/build/storage/r2).
 
 ## Configure
 
@@ -30,7 +30,7 @@ The following table lists the keys that `assets` accepts:
 | `not_found_handling` | `single-page-application`, `404-page`, or `none` | `none` |
 | `run_worker_first` | `true`, or up to 100 patterns, such as `"/api/*"` and `"!/api/public/*"` | `false` |
 
-Deploy refuses any other key. Every judt App has a `main` entry module, so every App has a Worker beside its assets.
+Deploy refuses any other key. Every Judt App has a `main` entry module, so every App has a Worker beside its assets.
 
 All files in the assets directory are public. Don't put Worker source or credentials there. Asset files can be of any type, and the App's source limits apply to them: 1 MiB for each file, and 32 MiB and 2,048 files and directories in total. For more information, see [The App contract](/build/app-contract#source-limits).
 

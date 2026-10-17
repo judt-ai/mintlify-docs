@@ -1,8 +1,9 @@
 ---
-title: "Apps and addresses"
-description: "What an App is, and how its slug, custom domain, and URL work."
+title: "Apps"
+description: "What an App is"
 ---
-An App is a full-stack web application in your organization. Each App has its own source repository, development sandbox, Secrets, runtime storage (D1, Durable Objects, KV, R2), and production deployment.
+
+An App is a full-stack web application. Each App has its own source repository, development sandbox, secrets, runtime storage (D1, Durable Objects, KV, R2), and production deployment.
 
 ## The App object
 
@@ -50,7 +51,7 @@ When you create or read an App with `POST /api/apps` or `GET /api/apps/{id}`, th
 
 ## Templates
 
-Every new App starts from a template. If you omit `template_id` when calling `POST /api/apps`, judt uses the default Hello template.
+Every new App starts from a template. If you omit `template_id` when calling `POST /api/apps`, Judt uses the default Hello template.
 
 To list available templates and their `id` values, call `GET /api/templates`:
 
@@ -75,7 +76,7 @@ Every App has a `slug` that determines its `.judt.dev` address:
 https://<slug>.judt.dev
 ```
 
-If you do not pass a `slug` when you create an App, judt generates a three-word slug such as `teal-plucky-tatooine`.
+If you do not pass a `slug` when you create an App, Judt generates a three-word slug such as `teal-plucky-tatooine`.
 
 ### Slug rules
 
@@ -84,7 +85,7 @@ A slug must meet these rules:
 - Contain `1` to `48` characters.
 - Use only lowercase ASCII letters (`a-z`), digits (`0-9`), and hyphens (`-`).
 - Start and end with a letter or a digit (`^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$`).
-- Be unique across all Apps on judt, including soft-deleted Apps.
+- Be unique across all Apps on Judt, including soft-deleted Apps.
 - Not use a reserved name: `staging`, `preview`, `api`, `www`, or `local`.
 
 If a slug is already taken or reserved, the API returns `409 slug_unavailable`.
@@ -107,6 +108,10 @@ curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
 You cannot change `slug` or `production` while a deployment is in progress (`409 deployment_unsettled`).
 
 ### Custom domains
+
+<Warning>
+  This feature is not supported yet. We'll be adding support soon. 
+</Warning>
 
 When a custom domain is configured on an App, the `domain` field contains that hostname and `url` returns `https://<domain>`. The `https://<slug>.judt.dev` address continues to serve the App alongside the custom domain.
 
@@ -148,7 +153,7 @@ For **30 days** after deletion, you can still inspect the deleted App and its hi
 - `GET /api/apps?include_deleted=true` lists soft-deleted Apps alongside active Apps (`?deleted=only` lists only soft-deleted Apps).
 - `GET /api/apps/{id}`, `GET /api/apps/{id}/commits`, `GET /api/apps/{id}/deployments`, `GET /api/apps/{id}/events`, and `GET /api/apps/{id}/logs` continue to work.
 
-After 30 days, judt permanently removes the App and its records.
+After 30 days, Judt permanently removes the App and its records.
 
 ## Next steps
 

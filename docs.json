@@ -30,16 +30,7 @@
               "manage/concepts/apps",
               "manage/concepts/sandbox",
               "manage/concepts/deployments",
-              "manage/concepts/secrets",
-              "manage/concepts/previews"
-            ]
-          },
-          {
-            "group": "Interfaces",
-            "pages": [
-              "manage/interfaces/api",
-              "manage/interfaces/mcp",
-              "manage/interfaces/agent"
+              "file-vs-agent-edits"
             ]
           },
           {
@@ -47,7 +38,16 @@
             "pages": [
               "manage/guides/agent-access",
               "manage/guides/publish",
-              "manage/guides/troubleshoot"
+              "manage/guides/troubleshoot",
+              "connect-to-mcp"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "manage/secrets",
+              "manage/concepts/previews",
+              "logs"
             ]
           }
         ]

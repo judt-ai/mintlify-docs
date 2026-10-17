@@ -1,10 +1,10 @@
 ---
 title: "Authenticate to the API and the MCP server"
 sidebarTitle: "Authentication"
-description: "Send an API key or an OAuth access token with each request to the judt API and the judt MCP server."
+description: "Send an API key or an OAuth access token with each request to the Judt API and the Judt MCP server."
 ---
 
-Each request to the judt API and the judt MCP server must include a credential in the `Authorization` header. judt accepts two types of credential:
+Each request to the Judt API and the Judt MCP server must include a credential in the `Authorization` header. Judt accepts two types of credential:
 
 - **API key**: You create the key in the dashboard and give it to a script, CI job, or agent.
 - **OAuth access token**: An agent or MCP client gets the token after you approve its access in your browser. You do not copy a credential.
@@ -80,7 +80,7 @@ An OAuth access token acts as you in one organization. You choose the organizati
 
 ### Scopes
 
-judt supports these OAuth scopes:
+Judt supports these OAuth scopes:
 
 | Scope | Dashboard label | Access |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ All `GET` and `HEAD` requests require `apps:read` (or `apps:write`). All `POST`,
 To connect an MCP client that supports OAuth, do these steps:
 
 1. In the client, add an MCP server with the URL `https://api.judt.ai/mcp`. Do not set a token or an `Authorization` header.
-2. When the client opens a judt page in your browser, sign in.
+2. When the client opens a Judt page in your browser, sign in.
 3. If you belong to more than one organization, select the organization for the client.
 4. Select the scopes to grant, and then click **Allow**.
 
@@ -109,17 +109,17 @@ To connect the agent, do these steps:
 
 1. Tell the agent:
    ```text
-   Go read https://judt.ai/auth.md and authenticate to manage judt Apps.
+   Go read https://judt.ai/auth.md and authenticate to manage Judt Apps.
    ```
 2. The agent registers itself and shows you a verification link and a short user code. Open the link.
-3. Sign in to judt.
+3. Sign in to Judt.
 4. If you belong to more than one organization, select the organization for the agent.
 5. Verify that the browser page shows the same code that the agent gave you.
 6. Select the scopes to grant, and then approve.
 
 The agent receives its tokens and starts sending requests.
 
-### Build an agent that connects to judt
+### Build an agent that connects to Judt
 
 If you are building an agent integration, follow the machine-readable instructions at [`https://judt.ai/auth.md`](https://judt.ai/auth.md). In summary, the agent performs these steps:
 

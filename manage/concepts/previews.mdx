@@ -18,7 +18,7 @@ curl -X POST https://api.judt.ai/api/apps/$APP_ID/preview \
   -H "Authorization: Bearer $JUDT_API_KEY"
 ```
 
-When you call `POST /api/apps/{id}/preview`, judt does the following:
+When you call `POST /api/apps/{id}/preview`, Judt does the following:
 
 1. Starts the sandbox if it is stopped.
 2. Starts `celld dev` on port `3000` (if not already running) and waits for the bundler to build your entry module.
@@ -44,8 +44,8 @@ You control who can open the published production App through the `production` o
 | `visibility` | Who can open the published App |
 | --- | --- |
 | `public` (default) | Anyone on the internet with the App's URL. |
-| `password` | Visitors who enter the App's password (`8` to `128` characters), or members of the App's organization who sign in with judt. |
-| `private` | Only members of the App's organization who sign in with judt. |
+| `password` | Visitors who enter the App's password (`8` to `128` characters), or members of the App's organization who sign in with Judt. |
+| `private` | Only members of the App's organization who sign in with Judt. |
 
 Both `password` and `private` sign-ins grant a **60-minute** browser session on the App.
 
@@ -84,7 +84,7 @@ curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
   }'
 ```
 
-When a visitor opens the App URL in a browser, judt redirects them to sign in and verifies that they belong to the App's organization.
+When a visitor opens the App URL in a browser, Judt redirects them to sign in and verifies that they belong to the App's organization.
 
 ## Short-lived production access tokens
 
@@ -115,7 +115,7 @@ You can send the access token to the published App in two ways:
    curl https://customer-portal.judt.dev/api/items \
      -H "X-Judt-Access-Token: $APP_ACCESS_TOKEN"
    ```
-   Using `X-Judt-Access-Token` authorizes the request at the judt edge while leaving the `Authorization` header free for your App's own authentication logic.
+   Using `X-Judt-Access-Token` authorizes the request at the Judt edge while leaving the `Authorization` header free for your App's own authentication logic.
 2. **`?access_token=` URL query parameter (for browsers)**:
    ```text
    https://customer-portal.judt.dev/?access_token=TOKEN

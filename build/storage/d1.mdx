@@ -4,7 +4,7 @@ description: "Store relational data, and change its schema with migrations."
 ---
 D1 is a SQLite database that the whole App shares. Use it for relational data that you query across many entities, such as users, orders, and posts, and for full-text search with FTS5. For the state of one entity that needs coordination or realtime updates, use a [Durable Object](/build/storage/durable-objects).
 
-celld, the judt runtime, implements the Cloudflare D1 API. judt applies your migration files at deploy. This page explains how, and lists each place where celld is different from Cloudflare.
+celld, the Judt runtime, implements the Cloudflare D1 API. Judt applies your migration files at deploy. This page explains how, and lists each place where celld is different from Cloudflare.
 
 ## Configure the binding
 
@@ -47,9 +47,9 @@ Migration files follow these rules:
 - Each file runs in its own transaction. Don't write `BEGIN` or `COMMIT` statements in a migration. A `CREATE TRIGGER ... BEGIN ... END` statement is permitted.
 - Don't change a migration after a deploy. To change the schema again, add another file.
 
-### How judt applies migrations at deploy
+### How Judt applies migrations at deploy
 
-judt applies pending migrations for each database when you deploy. The timing depends on whether the live version of the App already uses the database:
+Judt applies pending migrations for each database when you deploy. The timing depends on whether the live version of the App already uses the database:
 
 - **A database that the live version uses**: migrations run before the deployed code goes live. If a migration fails, then the deploy stops with the `migration_failed` error (HTTP `422`). Nothing is published, and the live version keeps serving.
 - **A database that the live version doesn't use**: migrations run after the deployed code goes live. For a few seconds, the deployed code can see an empty database. If a migration fails, then the deployed version stays live and the deployment reports `migration_failed`.
@@ -177,7 +177,7 @@ Keep large data in [R2](/build/storage/r2).
 
 celld differs from Cloudflare D1 in the following ways:
 
-- judt applies migrations at deploy, before or after the code goes live. The dev server doesn't apply them.
+- Judt applies migrations at deploy, before or after the code goes live. The dev server doesn't apply them.
 - celld refuses `ATTACH`, `DETACH`, `VACUUM`, `load_extension()`, and `TEMP` objects. FTS5 works, and the D1 PRAGMA list applies.
 - The `dump` method throws.
 - There is no Time Travel and no REST API.

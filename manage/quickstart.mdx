@@ -1,8 +1,9 @@
 ---
 title: "Quickstart"
-description: "Create an App, change a file, and publish it with the judt API."
+description: "Create an App, change a file, and publish it with the Judt API."
 ---
-This guide shows how to use the judt API from a terminal. You create an API key, and then you use the key to create an App, change its code, preview it in the sandbox, and publish it to production.
+
+This guide shows how to use the Judt API from a terminal. You create an API key, and then you use the key to create an App, change its code, preview it in the sandbox, and publish it to production.
 
 At the end of the guide, you get an agent prompt that tells a coding agent how to do the same work for you.
 
@@ -10,18 +11,18 @@ At the end of the guide, you get an agent prompt that tells a coding agent how t
 
 You need the following:
 
-- A judt account. To sign in, go to [judt.ai](https://judt.ai/apps).
+- A Judt account. To sign in, go to [judt.ai](https://judt.ai/apps).
 - A terminal that has `curl`.
 
 Each request in this guide goes to the base URL `https://api.judt.ai`.
 
 ## Create an API key
 
-An API key gives access to the judt API. The key acts as you in one organization.
+An API key gives access to the Judt API. The key acts as you in one organization.
 
 <Steps>
   <Step title="Open the API keys page">
-    In the judt dashboard, go to [API keys](https://judt.ai/api-keys).
+    In the Judt dashboard, go to [API keys](https://judt.ai/api-keys).
   </Step>
   <Step title="Start a new key">
     Click **Create key**. If the organization has no keys yet, click **Create your first key**.
@@ -222,7 +223,7 @@ To restrict the agent to a single App, create an App-scoped API key on the **API
 Copy the following prompt to your agent. Replace `TASK` with what you want the agent to build, such as `Add an endpoint at /time that returns the current UTC time as JSON, and publish the App.`
 
 ```text Agent prompt
-You manage a judt App with the judt API. Do the task at the end of this prompt.
+You manage a Judt App with the Judt API. Do the task at the end of this prompt.
 
 Access:
 - The base URL is https://api.judt.ai.

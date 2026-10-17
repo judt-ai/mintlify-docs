@@ -2,7 +2,7 @@
 title: "The App contract"
 description: "The files that an App contains, the limits on its source, and the rules that keep data attached to your code."
 ---
-An App is a directory of source files that follows a fixed layout. celld, the judt runtime, reads this layout on the dev server and at deploy. This page lists the files of an App, the limits on its source, and the rules that keep your data attached to your code.
+An App is a directory of source files that follows a fixed layout. celld, the Judt runtime, reads this layout on the dev server and at deploy. This page lists the files of an App, the limits on its source, and the rules that keep your data attached to your code.
 
 ## Files of an App
 
@@ -50,7 +50,7 @@ Some paths belong to the sandbox, the dev server, or the build, and aren't part 
 - `.env` and any name that starts with `.env.`
 - `.dev.vars` and any name that starts with `.dev.vars.`
 
-You can't write files at these paths through the platform's file operations. Deploy also refuses symbolic links. The `.gitignore` file in the judt templates lists `node_modules`, `dist`, `.celld`, the `.env` files, and `.dev.vars`, so a commit leaves them out.
+You can't write files at these paths through the platform's file operations. Deploy also refuses symbolic links. The `.gitignore` file in the Judt templates lists `node_modules`, `dist`, `.celld`, the `.env` files, and `.dev.vars`, so a commit leaves them out.
 
 ## Binary files
 

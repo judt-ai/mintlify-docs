@@ -4,7 +4,7 @@ description: "Run background jobs, fan out work, and retry failed messages."
 ---
 A queue moves work out of the request. A producer sends messages, and the `queue` handler of your App receives them in batches, with retries and an optional dead-letter queue. Use a queue for email, webhooks, upload processing, and fan-out.
 
-celld, the judt runtime, implements the Cloudflare Queues API, with one consumer for each queue in your App. For the features that celld doesn't support, see [Differences from Cloudflare](#differences-from-cloudflare).
+celld, the Judt runtime, implements the Cloudflare Queues API, with one consumer for each queue in your App. For the features that celld doesn't support, see [Differences from Cloudflare](#differences-from-cloudflare).
 
 ## Configure
 

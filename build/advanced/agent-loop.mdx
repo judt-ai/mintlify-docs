@@ -3,7 +3,7 @@ title: "Build an AI agent loop"
 sidebarTitle: "AI agent loop"
 description: "Run an agent that calls a model and tools in a loop, with durable state in a Durable Object."
 ---
-An agent loop calls a model, runs the tools that the model asks for, and repeats. This guide shows you how to keep each agent session in one Durable Object. The object holds the conversation, the tool calls, and the run status in SQLite, and its alarm moves the loop forward one step at a time. A crash or a restart of celld, the judt runtime, then resumes the loop from the saved state.
+An agent loop calls a model, runs the tools that the model asks for, and repeats. This guide shows you how to keep each agent session in one Durable Object. The object holds the conversation, the tool calls, and the run status in SQLite, and its alarm moves the loop forward one step at a time. A crash or a restart of celld, the Judt runtime, then resumes the loop from the saved state.
 
 Use this pattern for interactive agents that need chat, live progress, pause, cancel, or approval. For a batch job with no user interaction, you can also use a Workflow. For more information, see [Workflows](/build/background/workflows).
 

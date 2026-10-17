@@ -1,13 +1,14 @@
 ---
 title: "Configure wrangler.json"
 sidebarTitle: "wrangler.json"
-description: "The keys that judt accepts in the wrangler.json file, and how each binding becomes a property of env."
+description: "The keys that Judt accepts in the wrangler.json file, and how each binding becomes a property of env."
 ---
-The `wrangler.json` file configures the Worker and declares its bindings. It sits at the root of the App. celld, the judt runtime, reads the Cloudflare Wrangler format, and judt accepts a subset of its keys. Deploy refuses a file that sets any other key.
+
+The `wrangler.json` file configures the Worker and declares its bindings. It sits at the root of the App. celld, the Judt runtime, reads the Cloudflare Wrangler format, and Judt accepts a subset of its keys. Deploy refuses a file that sets any other key.
 
 ## File format
 
-judt reads only `wrangler.json`. It doesn't read a `wrangler.jsonc` or `wrangler.toml` file. The file must be a JSON object, and JSON has no comments.
+Judt reads only `wrangler.json`. It doesn't read a `wrangler.jsonc` or `wrangler.toml` file. The file must be a JSON object, and JSON has no comments.
 
 The following example shows a typical configuration:
 

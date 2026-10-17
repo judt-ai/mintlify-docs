@@ -1,0 +1,154 @@
+---
+title: "Connect to MCP"
+description: "Connect your coding agent to the Judt MCP server with an API key or OAuth."
+---
+
+The Judt MCP server exposes every Judt API operation as a native tool, so your agent can discover and call operations directly without parsing the OpenAPI specification. Use MCP whenever your agent or editor supports the Model Context Protocol.
+
+## Get an API key
+
+Create an API key in the Judt dashboard to authenticate your MCP client:
+
+<Steps>
+  <Step title="Open the API keys page">
+    In the [Judt dashboard](https://judt.ai/apps), go to [API keys](https://judt.ai/api-keys) and click **Create key**.
+  </Step>
+  <Step title="Choose the App scope and expiration">
+    Set the following fields:
+
+    - **Name**: the client or agent name, such as `Cursor` or `Claude Code`.
+    - **App**: select **one specific App** (recommended) or **All apps**.
+    - **Expires**: select a short expiration window such as `1 day` or `7 days` (recommended), or a longer window if needed.
+
+    Click **Create key** and copy the key (`judt_...`). The dashboard shows the key only once.
+  </Step>
+  <Step title="Store the key in an environment variable">
+    If your client reads credentials from your shell environment, export the key without saving it to your shell history:
+
+    ```bash
+    read -rs JUDT_API_KEY && export JUDT_API_KEY
+    ```
+  </Step>
+</Steps>
+
+### Recommended: Use a short-lived, App-scoped token
+
+Unless your agent needs to create new Apps across your organization, select a single App in **App** and a short expiration (`1 day` or `7 days`) in **Expires** when creating the key:
+
+- The agent can read and modify only that App (`GET /api/apps` returns only that App, and requests to any other App return `404 not_found`).
+- The agent cannot create new Apps (`403 app_scoped_token`).
+- The token expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
+
+If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](https://docs.judt.ai/api-reference/token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
+
+## Configure your MCP client
+
+The Judt MCP server uses the **Streamable HTTP** transport at:
+
+```text
+https://api.judt.ai/mcp
+```
+
+Pass your API key in the `Authorization` header as a bearer token (`Authorization: Bearer JUDT_API_KEY`). Select your client below for the exact configuration:
+
+<Tabs>
+  <Tab title="JSON config (Cursor / Claude)">
+    Add the `judt` server to `~/.cursor/mcp.json` (or your client's `mcpServers` JSON configuration):
+
+    ```json mcp.json
+    {
+      "mcpServers": {
+        "judt": {
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer JUDT_API_KEY"
+          }
+        }
+      }
+    }
+    ```
+
+    Replace `JUDT_API_KEY` with your `judt_...` key. Keep this file in your home directory so you do not commit the key to a repository.
+  </Tab>
+  <Tab title="VS Code">
+    Add the `judt` server to `.vscode/mcp.json`:
+
+    ```json .vscode/mcp.json
+    {
+      "inputs": [
+        {
+          "type": "promptString",
+          "id": "judt-api-key",
+          "description": "Judt API key",
+          "password": true
+        }
+      ],
+      "servers": {
+        "judt": {
+          "type": "http",
+          "url": "https://api.judt.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer ${input:judt-api-key}"
+          }
+        }
+      }
+    }
+    ```
+
+    VS Code prompts you for the key on first connection and stores it in secret storage.
+  </Tab>
+  <Tab title="Claude Code">
+    Run this command in your terminal:
+
+    ```bash
+    claude mcp add --transport http judt https://api.judt.ai/mcp \
+      --header "Authorization: Bearer $JUDT_API_KEY"
+    ```
+
+    Start Claude Code and run `/mcp` to confirm that `judt` is **connected**.
+  </Tab>
+  <Tab title="Codex">
+    Add these lines to `~/.codex/config.toml`:
+
+    ```toml ~/.codex/config.toml
+    [mcp_servers.judt]
+    url = "https://api.judt.ai/mcp"
+    bearer_token_env_var = "JUDT_API_KEY"
+    ```
+
+    Start Codex from a shell where `JUDT_API_KEY` is exported.
+  </Tab>
+  <Tab title="OAuth (no token)">
+    If your MCP client supports OAuth 2.1 (such as Claude Code, Cursor, VS Code, claude.ai, or ChatGPT) and you want organization-wide access instead of an App-scoped token, add `https://api.judt.ai/mcp` without an `Authorization` header. Your browser opens automatically so you can sign in to Judt and approve access. See [Authentication](/manage/authentication).
+  </Tab>
+</Tabs>
+
+## Choose how your agent edits Apps
+
+The MCP server includes tools for two different workflows. For a comparison of trade-offs in control, context, and token cost, see [File vs. Agent Edits](/file-vs-agent-edits):
+
+1. **Direct file and sandbox tools**: Your agent reads and writes files (`list_files`, `read_file`, `write_file`, `delete_file`), runs shell commands (`run_command`), tests on the dev server (`create_preview`), commits (`create_commit`), and publishes (`deploy`). Use this mode when you want your agent in full control of the source code.
+2. **Judt agent session tools**: Your agent delegates tasks to the built-in Judt agent by creating a session (`create_session`), sending a prompt (`create_turn`), and checking progress (`list_turns`, `list_session_events`). Use this mode when you want to treat the Judt agent as a specialized sub-agent that handles the `celld` runtime details for you.
+
+We recommend in your system prompt of your agent, tell it use one pattern or the other. Don't just give it to them. 
+
+<Tip>
+  We recommend in your system prompt of your agent, tell it use one pattern or the other. Don't just give it to them. 
+</Tip>
+
+## Available MCP tools
+
+| Group | Tools | What they do |
+| --- | --- | --- |
+| **Apps** | `list_apps`, `create_app`, `update_app`, `delete_app`, `create_access_token` | Create, inspect, rename, or delete Apps, change production visibility, and mint 5-minute access tokens. |
+| **Files** | `list_files`, `read_file`, `write_file`, `delete_file` | List or search files in `/app`, and read, write, or delete individual files with `ETag` concurrency checks. |
+| **Sandbox** | `git_info`, `run_command`, `create_preview`, `stop_sandbox`, `create_commit`, `list_commits`, `restore_commit` | Check Git status/diff, run shell commands in `/app`, start a 5-minute dev server preview, commit changes, or restore an earlier commit. |
+| **Deployments** | `deploy`, `list_deployments`, `unpublish_app` | Build and publish a commit to production, inspect deployment status, or take an App offline. |
+| **Secrets** | `list_secrets`, `set_secret`, `delete_secret` | List Secret names, set a Secret value, or delete a Secret. |
+| **Monitoring** | `list_events`, `list_logs` | Query platform events (`sandbox`, `deployment`, `deletion`) and runtime logs (`development`, `production`). |
+| **Templates** | `list_templates` | List starter templates for `create_app`. |
+| **Agent sessions** | `list_models`, `create_session`, `list_sessions`, `update_session`, `delete_session`, `create_turn`, `list_turns`, `cancel_turn`, `decline_input`, `list_session_events` | Drive the in-product Judt agent through sessions and turns. |
+
+<Warning>
+  Calling `set_secret` through an MCP client sends the Secret value through your model provider's context window. Set sensitive production Secrets in the Judt dashboard or directly via the REST API (`PUT /api/apps/{id}/secrets`). See [Secrets](/manage/secrets).
+</Warning>

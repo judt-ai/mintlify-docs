@@ -1,13 +1,13 @@
 ---
 title: "Commits and deployments"
-description: "How a commit becomes the production deployment of an App."
+description: "Understanding lifecycle and code history"
 ---
 
-In judt, editing files in the sandbox never changes your live production App directly. To publish changes to production, you save a **commit** and then create a **deployment** from that commit.
+In Judt, editing files in the sandbox never changes your live production App directly. To publish changes to production, you save a **commit** and then create a **deployment** from that commit.
 
 ## Commits
 
-A commit is an immutable snapshot of your App's `/app` directory stored in Git and backed up to durable storage.
+A commit is an immutable snapshot of your App's `/app` directory stored in Git and backed up inside of Judt. You can restore a commit later if needed.
 
 ### Create a commit
 
@@ -72,7 +72,7 @@ Only one deployment can run at a time for an App. If another deployment is still
 
 ### What happens during a deployment
 
-When you create a deployment, judt executes these steps in order:
+When you create a deployment, Judt executes these steps in order:
 
 1. **Export the commit**: Reads the commit snapshot from Git and verifies source limits (up to `2,048` files and folders, `32 MiB` total uncompressed size, and `1 MiB` per file).
 2. **Validate `wrangler.json`**: Checks the App configuration and storage bindings. See [The App contract](/build/app-contract) and [Configure wrangler.json](/build/wrangler-json).

@@ -1,0 +1,37 @@
+---
+title: "File vs. Agent Edits"
+---
+
+Exploring two types of integration patterns.
+
+Judt aims to make it dead simple for your agent to be able to ship fully functional web Apps. It does that by exposing strong primitives with simple editing & code writing. Brining flexibility and simplicity together.<br /><br />As part of this, you can decide how you want the integration to work: 
+
+1. **Give your agent file editing capability:** Expose the raw files to your agent so it manages the full end-to-end lifecycle. This means your agent is in full control and can deploy, commit, write files, view previews and more. 
+2. **Let the Judt agent (harness) manage it:** Instead of giving your agent access to the raw underlying tools, you can just send messages to our managed agent. Your agent sends a request of what it want and ours will go off an do that. Your agent can check-in on status to see what the Judt agent came back with. 
+
+The obvious trade off here is where token spend is done. Judt will simply charge 20% extra on all token spend -- what ever our raw cost is. We aim over time to make it the best agent for building Judt based apps, so quality compound over time.
+
+Here are some pros and cons of using our agent:
+
+<table>
+  <colgroup>
+    <col width="355" />
+    <col width="408" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th>**Pros**</th>
+      <th><h4>**Cons**</h4></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>**Simpler Integration.** You worry less about how well optimized your agent is it and instead just treat our agent as specialized a sub-agent of yours.</td>
+      <td>**Less control:** Your agent would have less raw details. If the agent is not reading direct source code, it goes through layers of LLM summaries to get context.</td>
+    </tr>
+    <tr>
+      <td>**Quality:** Since our agent & harness will be specifically prompted and trained on the underlying technology, we should be able to produce higher quality output for given goals.</td>
+      <td>**Cost:** It could cost more, as agent-to-agent communication requires overhead of communication, asking questions, and more. Judt also charges a 20% fee on token costs.</td>
+    </tr>
+  </tbody>
+</table>

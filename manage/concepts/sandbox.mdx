@@ -1,17 +1,19 @@
 ---
-title: "Sandboxes"
-description: "Where an App's source is edited and run, and when the sandbox starts and stops."
+title: "Development & Sandboxes"
 ---
-Every App has an isolated Linux sandbox where you and your agents edit source files, run shell commands, manage Git commits, and test the App on a live dev server before publishing to production.
+
+Every App has an isolated Linux sandbox (MicroVM) where you and your agents edit source files, run shell commands, manage Git commits, and test the App on a live dev server before publishing to production. This enables you to edit and create fully functional Apps, preview changes, and have full capability to build what ever you need.
+
+When you deploy an App, it will take what's actively in the development environment and attempt to deploy that to production.
 
 ## Sandbox lifecycle
 
-You do not need to start a sandbox manually. judt manages the sandbox lifecycle automatically:
+You do not need to actively manage the development environment state. Judt manages the sandbox lifecycle automatically:
 
-- **Created stopped**: When you create an App with `POST /api/apps`, its `sandbox_status` is `"stopped"`.
-- **Starts on demand**: Any request that reads or changes the sandbox starts it automatically. On the first start, judt initializes the `/app` working directory from the App's template.
-- **Stops when idle**: After 5 minutes with no API actions and no preview requests, judt commits any uncommitted changes in `/app`, saves a durable backup, and stops the sandbox.
-- **Manual stop**: Call `POST /api/apps/{id}/stop` to commit changes, back up `/app`, and stop the sandbox immediately.
+- **Stopped**: When you create an App with `POST /api/apps`, its `sandbox_status` is `"stopped"`.
+- **Starts on demand**: Any request that reads or changes the sandbox starts it automatically. On the first start, Judt initializes the `/app` working directory from the App's template.
+- **Stops when idle**: After 5 minutes with no API actions and no preview requests, Judt commits any uncommitted changes in `/app`, saves a durable backup, and stops the sandbox.
+- **Manual stop**: If you want, you can stop a sandbox. Its not necessary.  `POST /api/apps/{id}/stop` will commit changes, back up `/app`, and stop the sandbox immediately.
 
 ### Which endpoints start the sandbox
 
