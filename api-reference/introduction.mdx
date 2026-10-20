@@ -1,9 +1,129 @@
 ---
 title: "API reference"
 sidebarTitle: "Introduction"
-description: "The base URL, authentication, and conventions of the Judt API."
+description: "The base URL, authentication details, conventions, and error codes of the Judt API."
 ---
 
-This tab documents each endpoint of the Judt API. The base URL is `https://api.judt.ai`.
+This tab documents each endpoint of the Judt API.
 
-For how the API fits with the MCP server and the Judt agent, see [REST API](/manage/interfaces/api).
+- **REST API base URL**: `https://api.judt.ai` (endpoints under `/api/*`, OpenAPI spec at `https://api.judt.ai/api/openapi.json`)
+- **MCP server URL**: `https://api.judt.ai/mcp`
+- **Authorization server & dashboard**: `https://judt.ai` (agent instructions at [`https://judt.ai/auth.md`](https://judt.ai/auth.md))
+
+For a high-level summary of how to authenticate, see [Authentication](/manage/authentication).
+
+## Authentication details
+
+Every request must include an API key or an OAuth access token in the `Authorization` header:
+
+```http
+Authorization: Bearer <TOKEN>
+```
+
+### API keys
+
+- **Format**: Starts with `judt_` followed by 43 characters.
+- **Organization-wide keys (`All apps`)**: Access all Apps in the organization, create new Apps (`POST /api/apps`), and mint short-lived App-scoped tokens (`POST /api/tokens`).
+- **App-scoped keys**: Bound to a single App (created in the dashboard or via `POST /api/tokens` for `60` to `86400` seconds).
+  - `GET /api/apps` returns only that App.
+  - `POST /api/apps` and `POST /api/tokens` return `403 app_scoped_token`.
+  - Requests to `/api/apps/{id}` for any other App return `404 not_found`.
+  - Global read endpoints (`GET /api/templates`, `GET /api/models`) remain available.
+
+### OAuth scopes, endpoints, and lifetimes
+
+Agents obtain OAuth 2.0 tokens via MCP OAuth (authorization code flow) or the device authorization flow described in [`https://judt.ai/auth.md`](https://judt.ai/auth.md).
+
+| Scope | Dashboard label | Permitted requests |
+| --- | --- | --- |
+| `apps:read` | **View Apps** | All `GET` and `HEAD` requests (Apps, files, Git, commits, deployments, Secret names, templates, models, sessions, events, and logs). |
+| `apps:write` | **Change Apps** | All `POST`, `PUT`, `PATCH`, and `DELETE` requests (except `POST /api/tokens`, which requires an organization-wide API key). |
+| `offline_access` | — | Issues a refresh token (`ort_...`) alongside the access token. |
+
+- **Discovery**: Protected resource metadata ([RFC 9728](https://www.rfc-editor.org/rfc/rfc9728)) at `https://api.judt.ai/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`; authorization server metadata ([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414)) at `https://judt.ai/.well-known/oauth-authorization-server`; Poppy discovery at `https://judt.ai/.well-known/poppy.json`.
+- **OAuth endpoints**:
+  - Dynamic client registration ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)): `POST https://judt.ai/api/auth/oauth2/register`
+  - Device authorization ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)): `POST https://judt.ai/api/auth/device/code`
+  - Token & refresh: `POST https://judt.ai/api/auth/oauth2/token`
+  - Revocation: `POST https://judt.ai/api/auth/oauth2/revoke`
+- **Resource audiences ([RFC 8707](https://www.rfc-editor.org/rfc/rfc8707))**: Pass `resource=https://api.judt.ai` for the REST API and `resource=https://api.judt.ai/mcp` for the MCP server when requesting a code or token. If omitted, the token is issued for `https://api.judt.ai`.
+- **Token lifetimes**:
+  - **Access token (`oat_...`)**: 1 hour (`3600` seconds).
+  - **Refresh token (`ort_...`)**: 30 days (`2592000` seconds). Refresh tokens rotate on every refresh; store the new `refresh_token` and discard the old one.
+- **DPoP sender-constrained tokens ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449))**: If a client sends a `DPoP` proof header when requesting or refreshing a token, the access token is bound to that key and must be sent with `Authorization: DPoP <ACCESS_TOKEN>` and a fresh `DPoP` proof header on every request.
+
+### Organization roles
+
+Every credential acts as the user who created or approved it in one organization:
+
+| Role | Allowed actions |
+| --- | --- |
+| `owner`, `admin` | All actions, including creating, updating, and deleting Apps (`POST /api/apps`, `PATCH /api/apps/{id}`, `DELETE /api/apps/{id}`), managing Secrets (`PUT` and `DELETE` on `/api/apps/{id}/secrets`), and publishing or unpublishing deployments (`POST /api/apps/{id}/deployments`, `POST /api/apps/{id}/unpublish`). |
+| `member` | Read all App resources (including Secret names), edit and delete sandbox files, run commands, create and restore commits, create sandbox preview links, mint 5-minute App access tokens (`POST /api/apps/{id}/access`), and run in-product agent sessions and turns. Owner/admin endpoints return `403 forbidden`. |
+
+## Sandboxes, idempotency, and time limits
+
+- **On-demand sandboxes**: Creating an App reserves its address without starting a sandbox. Any endpoint that touches files, Git, commands, commits, restores, previews, or deployments starts the sandbox automatically if it is stopped, and the sandbox stops on its own when idle.
+- **Idempotency and retries**: Send an `Idempotency-Key` header (up to 200 printable characters) on mutating requests. For 30 days, retrying with the same key and input returns the original result instead of repeating the work.
+  - `503` or `504`: The action is recorded in the ledger and may still be running. Retry with the **same** `Idempotency-Key` to pick up the result.
+  - `4xx` or `502`: The result is final. Fix the cause before retrying with a new key.
+- **Time limits**:
+  - File writes, commits, restores, and stopping a sandbox: `120s` (plus up to `120s` if starting a stopped sandbox).
+  - Commands: `timeout_seconds` (up to `120s`), plus `60s` to stop and save output.
+  - Publishing, unpublishing, deleting an App, and changing production settings: `540s`.
+
+## Errors
+
+Failed requests return a JSON error envelope:
+
+```json
+{
+  "error": {
+    "code": "CODE",
+    "message": "Human-readable explanation.",
+    "detail": "Optional provider, build, or timeout details.",
+    "request_id": "req_..."
+  }
+}
+```
+
+Always branch on `error.code` rather than `error.message`.
+
+### Authentication and authorization error codes
+
+When the server rejects a credential, it returns a JSON error body and sets the `WWW-Authenticate` header (including `resource_metadata` on `401` responses per [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728)).
+
+| Status | Error code / header | Cause | Action |
+| --- | --- | --- | --- |
+| `401` | `unauthenticated` | No credential was sent, or the API key / OAuth token is invalid, expired, or revoked. | Send a valid API key or OAuth access token. |
+| `401` | `invalid_token` | `WWW-Authenticate` error when an API key or OAuth access token is expired, revoked, or issued for a different `resource` audience. | Refresh the access token, or request a token for the target server. |
+| `401` | `invalid_dpop_proof` | The `DPoP` proof header is missing, expired, replayed, or signed for a different HTTP method or URL. | Generate a fresh DPoP proof for the current request method and URL. |
+| `403` | `insufficient_scope` | The OAuth access token does not have the required scope (`apps:read` or `apps:write`). | Request authorization with the scope named in `WWW-Authenticate`. |
+| `403` | `app_scoped_token` | An App-scoped API key called `POST /api/apps` or `POST /api/tokens`. | Use an organization-wide API key (`All apps`). |
+| `403` | `api_token_required` | An OAuth access token called `POST /api/tokens`. | Use an organization-wide API key (`All apps`) to mint App tokens. |
+| `403` | `sign_in_required` | A Poppy Session Token was used before sign-in completed or after the user signed out. | Prompt the user to sign in to the Session. |
+| `403` | `forbidden` | Your organization role (`member`) does not allow this action. | Ask an organization `owner` or `admin` to perform the action. |
+
+### General API error codes
+
+| Status | Error code | Cause |
+| --- | --- | --- |
+| `400` | `invalid_request` | Request body, query parameter, or header failed validation. |
+| `400` | `invalid_pattern` | File search `glob` or regex `pattern` is invalid (`detail` explains why). |
+| `400` | `line_out_of_range` | File read `lines` range starts past the end of the file. |
+| `400` | `binary_file` | File read `lines` parameter was used on a binary file. |
+| `404` | `not_found`, `template_not_found` | The App, file, Secret, commit, deployment, session, turn, or template does not exist (or the token is scoped to a different App). |
+| `409` | `idempotency_conflict` | The `Idempotency-Key` was already used with a different request payload. |
+| `409` | `idempotency_expired` | The `Idempotency-Key` is older than the 30-day retry window. |
+| `409` | `slug_unavailable` | Another App (including a recently deleted App) already uses the slug, or the slug is reserved. |
+| `409` | `deployment_unsettled` | Another deployment for the App is currently in progress (`detail` names the deployment ID). |
+| `409` | `app_unpublished` | `POST /api/apps/{id}/access` was called on an App that is not published. |
+| `410` | `app_deleted` | The App has been deleted and only its tombstone/history remain readable. |
+| `412` | `precondition_failed` | File `If-Match` or `If-None-Match` ETag precondition did not match. |
+| `413` | `payload_too_large` | Request body exceeds the size limit (such as the 1 MiB file limit). |
+| `422` | `preview_failed` | The sandbox dev server failed to build or start (`detail` contains compiler output). |
+| `422` | `commit_not_found`, `build_failed`, `entrypoint_missing`, `unsupported_entrypoint`, `unsupported_dependencies`, `lockfile_missing`, `dependency_install_failed`, `source_limit` | The source cannot be deployed or restored as-is (`message` and `detail` describe what to fix). |
+| `429` | `rate_limited`, `feedback_limit` | Too many concurrent sandbox operations or rate limit exceeded. |
+| `502` | `deploy_failed`, `publish_timeout`, `activation_timeout`, `activation_failed`, `sandbox_incompatible`, `helper_output_too_large` | The sandbox or runtime host failed the operation permanently. |
+| `503` | `sandbox_busy`, `recovery_degraded` | A recorded sandbox action is not finished yet; retry with the same `Idempotency-Key`. |
+| `504` | `request_timeout` | The request reached its time limit while work continues in the background (`detail` names the latest progress and event ID). Retry with the same `Idempotency-Key`. |

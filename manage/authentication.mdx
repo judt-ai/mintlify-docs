@@ -1,182 +1,42 @@
 ---
 title: "Authenticate to the API and the MCP server"
 sidebarTitle: "Authentication"
-description: "Send an API key or an OAuth access token with each request to the Judt API and the Judt MCP server."
+description: "High-level summary of the ways to authenticate to the Judt API and MCP server."
 ---
 
-Each request to the Judt API and the Judt MCP server must include a credential in the `Authorization` header. Judt accepts two types of credential:
+Every request to the Judt REST API (`https://api.judt.ai/api`) and MCP server (`https://api.judt.ai/mcp`) requires an `Authorization` header.
 
-- **API key**: You create the key in the dashboard and give it to a script, CI job, or agent.
-- **OAuth access token**: An agent or MCP client gets the token after you approve its access in your browser. You do not copy a credential.
-
-The two servers use these URLs:
-
-- REST API: `https://api.judt.ai/api`
-- MCP server: `https://api.judt.ai/mcp`
-
-## Choose a credential
-
-Use this table to choose the right credential for your workflow:
-
-| Who sends the requests | Credential |
-| --- | --- |
-| Your scripts and CI jobs | An API key |
-| An agent that must access only one App | An App-scoped API key for that App |
-| An MCP client that supports OAuth (such as claude.ai, ChatGPT, Claude Code, VS Code, or Cursor) | An OAuth access token. The client signs you in. |
-| A standalone agent without built-in MCP OAuth | An OAuth access token via device code, or an API key. |
-
-An OAuth access token gives access to all Apps in one organization. To restrict an agent to a single App, give it an API key scoped to that App. See [Give an agent access to an App](/manage/guides/agent-access).
-
-## Organization roles and permissions
-
-Every API key and OAuth token acts as you in one organization and inherits your role in that organization. An agent cannot perform an action that your role does not allow.
-
-| Role | Allowed actions |
-| --- | --- |
-| `owner`, `admin` | All actions, including creating, updating, and deleting Apps (`POST /api/apps`, `PATCH /api/apps/{id}`, `DELETE /api/apps/{id}`), managing Secrets (`PUT` and `DELETE` on `/api/apps/{id}/secrets`), and publishing or unpublishing deployments (`POST /api/apps/{id}/deployments`, `POST /api/apps/{id}/unpublish`). |
-| `member` | Read all App resources (including Secret names), edit and delete sandbox files, run commands, create commits, restore commits, create sandbox preview links, mint 5-minute App access tokens (`POST /api/apps/{id}/access`), and run in-product agent sessions and turns. Owner-only and admin-only endpoints return `403 forbidden`. |
-
-## Use an API key
-
-An API key acts as you in one organization. When you create a key, you choose whether it can access **All apps** in the organization or **one specific App**.
-
-To create an API key, do these steps:
-
-1. In the dashboard, go to the [API keys](https://judt.ai/api-keys) page.
-2. Click **Create key** (or **Create your first key**).
-3. Type a **Name** for the key, such as `Laptop CLI` or `Cursor Agent`.
-4. In **App**, select **All apps** or select one App.
-5. In **Expires**, select when the key stops working (`1 day`, `7 days`, `30 days`, `90 days`, or `No expiration`).
-6. Click **Create key**.
-7. Copy the key. The dashboard shows the full key one time only.
-
-An API key starts with `judt_` followed by 43 characters. Send the key as a bearer token:
-
-```http
-GET https://api.judt.ai/api/apps
-Authorization: Bearer API_KEY
-```
-
-Replace `API_KEY` with your API key.
-
-<Warning>
-  Do not paste an API key into a chat conversation with an agent. Pass the key in an environment variable or your client's secret store.
-</Warning>
-
-To stop a key immediately, click **Revoke** next to the key on the **API keys** page.
-
-### App-scoped API keys
-
-When you select a single App in the **App** field, the API key is bound to that App:
-
-- `GET /api/apps` returns only that App.
-- `POST /api/apps` returns `403 app_scoped_token`. An App-scoped key cannot create new Apps.
-- Any request to `/api/apps/{id}` or `/api/apps/{id}/*` for a different App returns `404 not_found`.
-- Global read endpoints (`GET /api/templates` and `GET /api/models`) remain available.
-
-## Use an OAuth access token
-
-An OAuth access token acts as you in one organization. You choose the organization and the scopes when you approve access in your browser.
-
-### Scopes
-
-Judt supports these OAuth scopes:
-
-| Scope | Dashboard label | Access |
-| --- | --- | --- |
-| `apps:read` | **View Apps** | Read Apps, files, Git status, commits, deployments, Secret names, templates, models, sessions, events, and logs. |
-| `apps:write` | **Change Apps** | Create, update, and delete Apps; write and delete files; run commands; commit and restore; preview and stop sandboxes; publish and unpublish deployments; manage Secrets; and run agent turns. |
-| `offline_access` | — | Issue a refresh token so the agent keeps access after the access token expires. |
-
-All `GET` and `HEAD` requests require `apps:read` (or `apps:write`). All `POST`, `PUT`, `PATCH`, and `DELETE` requests require `apps:write`.
-
-### Connect an MCP client
-
-To connect an MCP client that supports OAuth, do these steps:
-
-1. In the client, add an MCP server with the URL `https://api.judt.ai/mcp`. Do not set a token or an `Authorization` header.
-2. When the client opens a Judt page in your browser, sign in.
-3. If you belong to more than one organization, select the organization for the client.
-4. Select the scopes to grant, and then click **Allow**.
-
-The client stays connected until you disconnect it. A token issued for the MCP server works only on `https://api.judt.ai/mcp`.
-
-### Connect a standalone agent with a device code
-
-An agent that does not use an MCP client can authenticate with the OAuth 2.0 Device Authorization Grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)). The agent does not need an account or an API key before it starts.
-
-To connect the agent, do these steps:
-
-1. Tell the agent:
-   ```text
-   Go read https://judt.ai/auth.md and authenticate to manage Judt Apps.
-   ```
-2. The agent registers itself and shows you a verification link and a short user code. Open the link.
-3. Sign in to Judt.
-4. If you belong to more than one organization, select the organization for the agent.
-5. Verify that the browser page shows the same code that the agent gave you.
-6. Select the scopes to grant, and then approve.
-
-The agent receives its tokens and starts sending requests.
-
-### Build an agent that connects to Judt
-
-If you are building an agent integration, follow the machine-readable instructions at [`https://judt.ai/auth.md`](https://judt.ai/auth.md). In summary, the agent performs these steps:
-
-1. Register once as a public client with Dynamic Client Registration ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) at `POST https://judt.ai/api/auth/oauth2/register`.
-2. Request a device code and user code at `POST https://judt.ai/api/auth/device/code`. Include one `resource` parameter for each server that the agent calls.
-3. Display `verification_uri_complete` (or `verification_uri` and `user_code`) to the user.
-4. Poll `POST https://judt.ai/api/auth/oauth2/token` until the user approves the request.
-5. Send the access token (`oat_...`) in the `Authorization: Bearer ACCESS_TOKEN` header.
-6. Refresh the access token at `POST https://judt.ai/api/auth/oauth2/token` before it expires.
-
-The `resource` parameters control which server accepts the token ([RFC 8707](https://www.rfc-editor.org/rfc/rfc8707)). This request asks for a token that works on both the REST API and the MCP server:
-
-```http
-POST https://judt.ai/api/auth/device/code
-Content-Type: application/x-www-form-urlencoded
-
-client_id=CLIENT_ID&scope=apps:read+apps:write+offline_access&resource=https://api.judt.ai&resource=https://api.judt.ai/mcp
-```
-
-Replace `CLIENT_ID` with the `client_id` returned during registration. If the agent omits `resource`, the token works only on `https://api.judt.ai`.
-
-Agents that implement the [Personal Agent Protocol](https://personalagentprotocol.org/docs/spec) (Poppy 0.1) can discover endpoints at `https://judt.ai/.well-known/poppy.json`. Their Session Tokens use DPoP on the REST API and Bearer tokens on the MCP server.
-
-### Token lifetimes
-
-OAuth tokens have these lifetimes:
-
-- **Access token (`oat_...`)**: 1 hour (`3600` seconds).
-- **Refresh token (`ort_...`)**: 30 days. Each refresh rotates the refresh token and returns a new one. Store the new refresh token and discard the old one.
-
-### Optional: Bind tokens to a DPoP key
-
-An agent that holds a DPoP key pair ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) can bind its OAuth tokens to that key. Send a `DPoP` proof header when requesting or refreshing the token, and then send each API or MCP request with `Authorization: DPoP ACCESS_TOKEN` and a fresh `DPoP` proof header.
-
-A DPoP-bound token is rejected if sent with `Authorization: Bearer`.
-
-### Disconnect an agent
-
-To disconnect a connected OAuth client or agent, do these steps:
-
-1. In the dashboard, open the account menu and click **Connected agents**, or go directly to [`https://judt.ai/connected-agents`](https://judt.ai/connected-agents).
-2. Find the agent and click **Disconnect**.
-3. Confirm by clicking **Disconnect** in the dialog.
-
-The agent loses access on its next request. An agent can also revoke its own token by calling `POST https://judt.ai/api/auth/oauth2/revoke`.
-
-## Authentication errors
-
-When the server rejects a credential, it returns a JSON error body and sets the `WWW-Authenticate` header. For the full error response structure, see [REST API — Errors](/manage/interfaces/api#errors).
-
-| Status | Error code / header | Cause | Action |
+| Path | Who it's for | Scope | How it starts |
 | --- | --- | --- | --- |
-| `401` | `unauthenticated` | The request has no credential, or the API key is invalid, expired, or revoked. | Send a valid API key or OAuth access token. |
-| `401` | `invalid_token` | The OAuth access token is expired, revoked, or issued for a different `resource` audience. | Refresh the access token, or request a token for the target server. |
-| `401` | `invalid_dpop_proof` | The `DPoP` proof header is missing, expired, or signed for a different HTTP method or URL. | Generate a new DPoP proof for the current request method and URL. |
-| `403` | `insufficient_scope` | The OAuth token does not have the required scope (`apps:read` or `apps:write`). | Request authorization with the scope named in the `WWW-Authenticate` header. |
-| `403` | `app_scoped_token` | An App-scoped API key called `POST /api/apps`. | Use an organization-wide API key (`All apps`) to create Apps. |
-| `403` | `forbidden` | Your organization role (`member`) does not allow this action. | Ask an organization `owner` or `admin` to perform the action. |
+| **API key** _(primary)_ | Scripts, CI, and agents | Organization-wide or a single App | Create a `judt_...` key in [API keys](https://judt.ai/api-keys) or mint a short-lived App token via `POST /api/tokens`. |
+| **Agent OAuth** | Coding agents and MCP clients | Organization-wide (`apps:read`, `apps:write`) | Kicked off automatically via MCP OAuth or by following [`https://judt.ai/auth.md`](https://judt.ai/auth.md) against the OAuth endpoints. |
 
-A `401` response also includes a `resource_metadata` URL in `WWW-Authenticate` ([RFC 9728](https://www.rfc-editor.org/rfc/rfc9728)) so OAuth clients can discover the authorization server automatically.
+## 1. API keys (primary)
+
+API keys are the primary way to authenticate scripts, CI jobs, and agents. An API key starts with `judt_` and is sent as a bearer token:
+
+```http
+Authorization: Bearer judt_...
+```
+
+- **Create in the dashboard**: Go to [API keys](https://judt.ai/api-keys) to create a key scoped to **All apps** in your organization or **one specific App**, with an optional expiration (`1 day` to `90 days`, or no expiration).
+- **Mint short-lived App tokens via the API**: An organization-wide API key can call `POST /api/tokens` to mint a short-lived (`60s`–`24h`) token scoped to a single App—ideal for handing an agent or customer session isolated access to one App. See [Give an agent access to a single App](/manage/guides/agent-access).
+- **Revoke anytime**: Revoke keys immediately from the [API keys](https://judt.ai/api-keys) page.
+
+## 2. Agent OAuth
+
+When an agent or MCP client authenticates with OAuth, you approve its access in your browser instead of copying a key. OAuth tokens act as you in the organization you select and carry `apps:read` and/or `apps:write` scopes.
+
+There are two ways an agent kicks off OAuth:
+
+- **Via the MCP server**: Connect an OAuth-capable MCP client (Claude Code, Cursor, VS Code, claude.ai, ChatGPT) to `https://api.judt.ai/mcp` without an `Authorization` header. An unauthenticated request returns `401` with a `WWW-Authenticate` header pointing to the RFC 9728 protected resource metadata (`/.well-known/oauth-protected-resource/mcp`), and the client opens your browser to sign in. See [Connect to MCP](/connect-to-mcp).
+- **Via `auth.md` and the OAuth endpoints**: Standalone agents read [`https://judt.ai/auth.md`](https://judt.ai/auth.md) for step-by-step instructions. The agent discovers metadata at `https://judt.ai/.well-known/oauth-authorization-server`, registers dynamically (`POST /api/auth/oauth2/register`), starts the device authorization flow (`POST /api/auth/device/code`), and polls `POST /api/auth/oauth2/token` while you approve the code at `https://judt.ai/device`. Agents using the Personal Agent Protocol (Poppy) can also discover endpoints at `https://judt.ai/.well-known/poppy.json`.
+
+You can view and revoke connected OAuth clients at any time on the [Connected agents](https://judt.ai/connected-agents) page, or an agent can revoke its own token at `POST /api/auth/oauth2/revoke`.
+
+## Roles and other tokens
+
+- **Organization roles**: Every API key and OAuth token inherits your role in the target organization. `owner` and `admin` can perform all actions (including creating/deleting Apps, managing Secrets, and deploying to production); `member` can read resources, edit sandbox files, run commands, commit, preview, and run agent turns, but receives `403 forbidden` on owner/admin actions.
+- **App access tokens (for viewing private Apps)**: To let an automated caller or browser open a `password` or `private` published App (`https://<slug>.judt.dev`), mint a 5-minute access token with `POST /api/apps/{id}/access` and pass it in `X-Judt-Access-Token` or `?access_token=`. See [Previews and access](/manage/concepts/previews).
+
+For general API conventions, OAuth scopes and lifetimes, DPoP key binding, and authentication error codes, see the [API reference](/api-reference/introduction).
