@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "judt API",
+    "title": "Judt API",
     "version": "1.0.0",
-    "description": "The judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token as a bearer token in the `Authorization` header. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App. Give that kind of token to an agent.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Retries\n\nA request that changes something returns `200` with its result after the work is done. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional."
+    "description": "The Judt API creates and runs Apps. Each App has a sandbox, where you and agents edit and run its source, and a production deployment that serves it.\n\n## Authentication\n\nSend an API token or an OAuth access token in the `Authorization` header.\n\n- **API token:** send it as a bearer token. A token belongs to one organization, and you create and revoke tokens in the dashboard. A token scoped to one App can reach only that App. An organization-wide token can also create a short-lived token for one App with `POST /api/tokens`, to give to an agent or an MCP client.\n- **OAuth access token:** an agent gets one when a person approves its access to one organization, so the person never handles a token. Reads need the `apps:read` scope, and changes need `apps:write`. To register and sign in, follow https://judt.ai/auth.md. Send the token as a bearer token, or with a DPoP proof if it's bound to a DPoP key. One access token can work on both this API and the MCP server at https://api.judt.ai/mcp.\n\n## Sandboxes\n\nCreating an App reserves its address, but it doesn't start a sandbox or publish anything. There's no endpoint to start a sandbox. A request that needs the sandbox starts it first, so the first request after the sandbox goes idle takes longer. Files, Git, commands, commits, restores, previews, and deployments all need the sandbox.\n\nThe sandbox stops on its own when it's idle. If `sandbox_status` is `failed`, the most recent start failed, and the API retries it while the sandbox is needed.\n\n## Pagination\n\nA list returns one page at a time, in the form `{\"results\": [...], \"has_more\": true, \"next_cursor\": \"CURSOR\"}`. To get the next page, list again with `cursor` set to `next_cursor`, and the same `sort` and filters. Results that arrive while you page don't shift your pages. On the last page, `has_more` is `false`, and `next_cursor` still finds results added later.\n\n## Retries\n\nA request that creates, changes, or deletes something returns `200` after the work is done, with the resource as it is afterward. To retry a request safely, send an `Idempotency-Key` header. For 30 days, a retry with the same key and input returns the first request's result instead of repeating the work. If you don't send a key, the API generates one and returns it in the `Idempotency-Key` response header. Setting and deleting a Secret take no key, because repeating them changes nothing. A visitor token or a preview link is created fresh each time, because nothing is stored to repeat.\n\nThe API records file writes and deletes, commands, commits, and restores before it runs them. The response status tells you what to do next:\n\n- `503` or `504`: the action is recorded but not finished. To get its result, retry with the same key. A new key would run the action again.\n- `4xx` or `502`: the result is final. A retry with the same key returns the same response.\n\nA `504 request_timeout` response says how far the work got and which event to check. The work continues, and a retry with the same key picks it up.\n\n## Troubleshooting\n\nTo see what happened to an App's sandbox, deployments, and deletion, list its events with `GET /api/apps/{id}/events`. To see what the App's code did, including requests, output, exceptions, and failed builds, list its logs with `GET /api/apps/{id}/logs`.\n\n## Time limits\n\nRequests have the following time limits:\n\n- Stopping the sandbox: 120 seconds.\n- File writes, commits, and restores: 120 seconds.\n- Commands: the command's `timeout_seconds`, up to 120 seconds, plus 60 seconds to stop it and save its result.\n- Publishing, unpublishing, deleting an App, and changing production settings: 540 seconds, including any sandbox start.\n\nIf a file write, commit, restore, or command has to start the sandbox, it gets up to 120 more seconds.\n\n## Errors\n\nAn error returns a JSON body in the form `{\"error\": {\"code\": \"CODE\", \"message\": \"MESSAGE\", \"detail\": \"DETAIL\", \"request_id\": \"REQUEST_ID\"}}`. The `code` value is stable, so check it rather than `message`. The `detail` value is optional. When a parameter or a body field isn't valid, the request returns `400 invalid_request`, `message` names the field, and `detail` lists every problem if there's more than one.\n\nWhen the server rejects a credential, it returns a JSON error body and sets the `WWW-Authenticate` header. A `401` response includes the `resource_metadata` URL in `WWW-Authenticate` (RFC 9728):\n\n| Status | Error code / header | Cause | Action |\n|---|---|---|---|\n| `401` | `unauthenticated` | The request has no credential, or the API token or OAuth access token is invalid, expired, or revoked. | Send a valid API token or OAuth access token. |\n| `401` | `invalid_token` | `WWW-Authenticate` error when an API token or OAuth access token is expired, revoked, or issued for a different `resource` audience. | Refresh the access token, or request a token for the target server. |\n| `401` | `invalid_dpop_proof` | The `DPoP` proof header is missing, expired, replayed, or signed for a different HTTP method or URL. | Create a new DPoP proof for the request method and URL. |\n| `403` | `insufficient_scope` | The OAuth token does not have the required scope (`apps:read` or `apps:write`). | Request authorization with the scope named in `WWW-Authenticate`. |\n| `403` | `app_scoped_token` | An App-scoped API token called `POST /api/apps` or `POST /api/tokens`. | Use an organization-wide API token. |\n| `403` | `api_token_required` | An OAuth access token called `POST /api/tokens`. | Use an organization-wide API token. |\n| `403` | `sign_in_required` | A Personal Agent Session Token was used before the user signed in or after the user signed out. | Tell the user to sign in to the Session. |\n| `403` | `forbidden` | Your organization role (`member`) does not allow this action. | Ask an organization `owner` or `admin` to do the action. |"
   },
   "servers": [
     {
@@ -14,6 +14,10 @@
     {
       "name": "Apps",
       "description": "Create, update, and delete Apps, and control who can reach them."
+    },
+    {
+      "name": "Tokens",
+      "description": "Create short-lived API tokens that reach one App, to give to an agent or an MCP client."
     },
     {
       "name": "Secrets",
@@ -42,6 +46,10 @@
     {
       "name": "Agents",
       "description": "Work with the in-product coding agent: sessions, turns, events, and the models it runs on. The agent itself works only through this API."
+    },
+    {
+      "name": "Feedback",
+      "description": "Tell the Judt team about bugs, friction, and anything else."
     }
   ],
   "paths": {
@@ -52,10 +60,20 @@
         "tags": [
           "Apps"
         ],
-        "operationId": "post__api_apps",
+        "operationId": "create_app",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -86,7 +104,7 @@
                     "description": "The App's display name, up to 100 characters."
                   },
                   "slug": {
-                    "description": "The App's label under the App base domain. If another App has the slug, including a deleted App, or the slug is reserved, the request returns `409 slug_unavailable`. Reserved slugs: `staging`, `preview`, `api`, `www`, `local`. If you omit it, the API generates one, such as `teal-plucky-tatooine`.",
+                    "description": "The App's label under the App base domain. If another App has the slug, including a deleted App, or the slug is reserved, the request returns `409 slug_unavailable`. Reserved slugs: `staging`, `preview`, `api`, `www`, `local`. If you omit it, the API generates one, such as `plucky-teal-tatooine`.",
                     "type": "string",
                     "pattern": "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$"
                   },
@@ -192,10 +210,20 @@
         "tags": [
           "Apps"
         ],
-        "operationId": "get__api_apps",
+        "operationId": "list_apps",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -211,13 +239,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of Apps to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first Apps.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -269,9 +297,6 @@
           },
           "403": {
             "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -283,10 +308,20 @@
         "tags": [
           "Apps"
         ],
-        "operationId": "get__api_apps_id_",
+        "operationId": "get_app",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -314,9 +349,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -330,14 +362,24 @@
       },
       "patch": {
         "summary": "Update an App",
-        "description": "Changes the App's name, slug, or production access. If a deployment is in progress, a change to production returns `409 deployment_unsettled`. Try again after the deployment finishes.",
+        "description": "Changes the App's name, slug, or production access. If a deployment is in progress, a change to the slug or to production access returns `409 deployment_unsettled`. Try again after the deployment finishes. A new name applies at once.",
         "tags": [
           "Apps"
         ],
-        "operationId": "patch__api_apps_id_",
+        "operationId": "update_app",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -350,6 +392,17 @@
               "type": "string",
               "pattern": "^app_[0-9A-Za-z]{24}$",
               "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key that identifies this request for retries, up to 200 printable characters. A retry with the same key and input returns the first request's result instead of repeating the work. If you omit the key, the API generates one and returns it in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             }
           }
         ],
@@ -403,7 +456,21 @@
         "responses": {
           "200": {
             "description": "The updated App.",
-            "headers": {},
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              },
+              "Idempotency-Retry-Window": {
+                "schema": {
+                  "type": "string",
+                  "example": "2592000"
+                },
+                "description": "How long you can retry with the same key, in seconds: 2592000 (30 days)."
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -425,7 +492,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "- `deployment_unsettled`: another deployment of the App is still in progress, and `detail` names it. Change production settings after it finishes.\n- `slug_unavailable`: another App has the slug, or the slug is reserved.",
+            "description": "- `deployment_unsettled`: another deployment of the App is still in progress, and `detail` names it. Change production settings after it finishes.\n- `slug_unavailable`: another App has the slug, or the slug is reserved.\n- `idempotency_conflict`: the key was used with a different request.\n- `idempotency_expired`: the key is too old to reuse.",
             "content": {
               "application/json": {
                 "schema": {
@@ -451,10 +518,20 @@
         "tags": [
           "Apps"
         ],
-        "operationId": "delete__api_apps_id_",
+        "operationId": "delete_app",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -535,17 +612,27 @@
         }
       }
     },
-    "/api/apps/{id}/access": {
+    "/api/apps/{id}/visitor-tokens": {
       "post": {
-        "summary": "Create an access token",
-        "description": "Creates a token that opens the published App for five minutes, without its password or sign-in. To use it, send it in the `X-Judt-Access-Token` header, or add it to a link as the `access_token` URL parameter. A public App ignores the token.\n\nIf the App isn't published, the request returns `409 app_unpublished`.",
+        "summary": "Create a visitor token",
+        "description": "Creates a visitor token, which opens the published App for five minutes without its password or sign-in. To use it, send it in the `X-Judt-Access-Token` header, or add it to a link as the `access_token` URL parameter. A public App ignores the token.\n\nIf the App isn't published, the request returns `409 app_unpublished`.",
         "tags": [
           "Apps"
         ],
-        "operationId": "post__api_apps_id_access",
+        "operationId": "create_visitor_token",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -559,16 +646,34 @@
               "pattern": "^app_[0-9A-Za-z]{24}$",
               "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key for this request, up to 200 printable characters. The request stores nothing, so a retry makes a new one whatever the key; the API returns the key in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "The access token.",
-            "headers": {},
+            "description": "The visitor token.",
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccessToken"
+                  "$ref": "#/components/schemas/VisitorToken"
                 }
               }
             }
@@ -601,6 +706,133 @@
         }
       }
     },
+    "/api/tokens": {
+      "post": {
+        "summary": "Create an App token",
+        "description": "Creates an API token that reaches only one App, for up to 24 hours. Give it to an agent or an MCP client that should work on that App and nothing else. The token can't reach other Apps, create Apps, or create tokens. It stops working at `expires_at`, and never outlives the token that created it, so it can't extend that token's access.\n\nOnly an organization-wide API token can create one. The response is the only place the token's value appears, so store it before you continue. If the response is lost, retry with the same `Idempotency-Key`: the retry returns the same token with a new value, and the earlier value stops working. To revoke a token before it expires, use the dashboard.",
+        "tags": [
+          "Tokens"
+        ],
+        "operationId": "create_app_token",
+        "security": [
+          {
+            "ApiToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key that identifies this request for retries, up to 200 printable characters. A retry with the same key and input returns the first request's result instead of repeating the work. If you omit the key, the API generates one and returns it in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "description": "A name for the token, up to 100 characters. The dashboard lists the token by this name."
+                  },
+                  "app_id": {
+                    "type": "string",
+                    "pattern": "^app_[0-9A-Za-z]{24}$",
+                    "description": "The App that the token reaches. The token can't reach any other App or create Apps."
+                  },
+                  "expires_in": {
+                    "default": 3600,
+                    "description": "How long the token works, in seconds, from 60 to 86400 (24 hours). Default: 3600. The token never outlives the token that created it.",
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 86400,
+                    "example": 300
+                  }
+                },
+                "required": [
+                  "name",
+                  "app_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new token, with its value.",
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              },
+              "Idempotency-Retry-Window": {
+                "schema": {
+                  "type": "string",
+                  "example": "2592000"
+                },
+                "description": "How long you can retry with the same key, in seconds: 2592000 (30 days)."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedApiToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "description": "- `app_scoped_token`: the request used an App-scoped token, which can't create tokens.\n- `api_token_required`: the request used an OAuth access token. Use an organization-wide API token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "- `token_revoked`: the token that this key created was revoked. Create another with a new key.\n- `idempotency_conflict`: the key was used with a different request.\n- `idempotency_expired`: the key is too old to reuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/apps/{id}/secrets": {
       "get": {
         "summary": "List Secrets",
@@ -608,10 +840,20 @@
         "tags": [
           "Secrets"
         ],
-        "operationId": "get__api_apps_id_secrets",
+        "operationId": "list_secrets",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -638,13 +880,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of Secrets to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first Secrets.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -695,17 +937,29 @@
             "$ref": "#/components/responses/Error"
           }
         }
-      },
-      "put": {
-        "summary": "Set a Secret",
-        "description": "Creates a Secret and returns `201`, or replaces the value of the Secret with that name and returns `200`. The App gets the value the next time its sandbox starts or it's deployed.\n\nIf a waiting agent turn requested this Secret, and it's the last one that the turn needs, the turn resumes.",
+      }
+    },
+    "/api/apps/{id}/secrets/{name}": {
+      "get": {
+        "summary": "Get a Secret",
+        "description": "Returns a Secret by name, without its value.",
         "tags": [
           "Secrets"
         ],
-        "operationId": "put__api_apps_id_secrets",
+        "operationId": "get_secret",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -718,6 +972,89 @@
               "type": "string",
               "pattern": "^app_[0-9A-Za-z]{24}$",
               "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The Secret's name: uppercase letters, digits, and underscores, not starting with a digit. The App reads the value as an environment variable with this name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]{0,127}$",
+              "example": "STRIPE_SECRET_KEY"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Secret, without its value.",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "summary": "Set a Secret",
+        "description": "Creates the Secret with this name, or replaces its value. The App gets the value the next time its sandbox starts or it's deployed.\n\nIf a waiting agent turn requested this Secret, and it's the last one that the turn needs, the turn resumes.",
+        "tags": [
+          "Secrets"
+        ],
+        "operationId": "set_secret",
+        "security": [
+          {
+            "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A unique ID that starts with `app_`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^app_[0-9A-Za-z]{24}$",
+              "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The Secret's name: uppercase letters, digits, and underscores, not starting with a digit. The App reads the value as an environment variable with this name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]{0,127}$",
+              "example": "STRIPE_SECRET_KEY"
             }
           }
         ],
@@ -729,11 +1066,6 @@
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Z_][A-Z0-9_]{0,127}$",
-                    "description": "The Secret's name: uppercase letters, digits, and underscores, not starting with a digit. The App reads the value as an environment variable with this name."
-                  },
                   "value": {
                     "type": "string",
                     "minLength": 1,
@@ -742,7 +1074,6 @@
                   }
                 },
                 "required": [
-                  "name",
                   "value"
                 ],
                 "additionalProperties": false
@@ -750,87 +1081,6 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "The updated Secret.",
-            "headers": {},
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Secret"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "The new Secret.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Secret"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "410": {
-            "$ref": "#/components/responses/Error"
-          },
-          "413": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/apps/{id}/secrets/{secret}": {
-      "get": {
-        "summary": "Get a Secret",
-        "description": "Returns a Secret by its ID or name, without its value.",
-        "tags": [
-          "Secrets"
-        ],
-        "operationId": "get__api_apps_id_secrets_secret_",
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "A unique ID that starts with `app_`.",
-            "schema": {
-              "type": "string",
-              "pattern": "^app_[0-9A-Za-z]{24}$",
-              "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
-            }
-          },
-          {
-            "name": "secret",
-            "in": "path",
-            "required": true,
-            "description": "The Secret's ID, which starts with `sec_`, or its name.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "The Secret, without its value.",
@@ -857,111 +1107,6 @@
           },
           "410": {
             "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "put": {
-        "summary": "Replace a Secret",
-        "description": "Replaces the Secret's name and value. If no Secret matches the path and the body uses the same name, the request creates the Secret and returns `201`. The App gets the value the next time its sandbox starts or it's deployed.\n\nIf a waiting agent turn requested this Secret, and it's the last one that the turn needs, the turn resumes.",
-        "tags": [
-          "Secrets"
-        ],
-        "operationId": "put__api_apps_id_secrets_secret_",
-        "security": [
-          {
-            "ApiToken": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "A unique ID that starts with `app_`.",
-            "schema": {
-              "type": "string",
-              "pattern": "^app_[0-9A-Za-z]{24}$",
-              "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
-            }
-          },
-          {
-            "name": "secret",
-            "in": "path",
-            "required": true,
-            "description": "The Secret's ID, which starts with `sec_`, or its name.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[A-Z_][A-Z0-9_]{0,127}$",
-                    "description": "The Secret's name: uppercase letters, digits, and underscores, not starting with a digit. The App reads the value as an environment variable with this name."
-                  },
-                  "value": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 65536,
-                    "description": "The Secret's value, from 1 byte to 64 KiB of UTF-8. Responses never include it."
-                  }
-                },
-                "required": [
-                  "name",
-                  "value"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The updated Secret.",
-            "headers": {},
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Secret"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "The new Secret.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Secret"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
-          "410": {
-            "$ref": "#/components/responses/Error"
           },
           "413": {
             "$ref": "#/components/responses/Error"
@@ -974,10 +1119,20 @@
         "tags": [
           "Secrets"
         ],
-        "operationId": "delete__api_apps_id_secrets_secret_",
+        "operationId": "delete_secret",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -993,12 +1148,14 @@
             }
           },
           {
-            "name": "secret",
+            "name": "name",
             "in": "path",
             "required": true,
-            "description": "The Secret's ID, which starts with `sec_`, or its name.",
+            "description": "The Secret's name: uppercase letters, digits, and underscores, not starting with a digit. The App reads the value as an environment variable with this name.",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]{0,127}$",
+              "example": "STRIPE_SECRET_KEY"
             }
           }
         ],
@@ -1014,9 +1171,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -1024,9 +1178,6 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "409": {
             "$ref": "#/components/responses/Error"
           },
           "410": {
@@ -1038,14 +1189,24 @@
     "/api/apps/{id}/files": {
       "get": {
         "summary": "List files",
-        "description": "Lists the App's source files by path. Folders aren't listed separately. A file's path includes its folders.",
+        "description": "Lists the App's source files by path: the files Git tracks, and new files that `.gitignore` doesn't ignore. Folders aren't listed separately. A file's path includes its folders.\n\nTo find code, filter paths with `path` or `glob`, and file text with `content` or `pattern`. A text search adds `match_count` and the first 20 matching lines to each file. To see more of a file, read it with `lines`.",
         "tags": [
           "Files"
         ],
-        "operationId": "get__api_apps_id_files",
+        "operationId": "list_files",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -1072,13 +1233,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of files to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first files.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -1109,6 +1270,26 @@
               "minLength": 1,
               "maxLength": 200
             }
+          },
+          {
+            "name": "glob",
+            "in": "query",
+            "description": "Returns only files whose `path` matches this glob, from the App's root. `*` matches within one folder, `**` matches across folders, `?` matches one character, `[abc]` matches one of a set, and `{ts,tsx}` matches any of its alternatives, as in `src/**/*.{ts,tsx}`. Without a leading `**/`, a glob matches only from the root: `*.json` matches `package.json` but not `src/data.json`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "pattern",
+            "in": "query",
+            "description": "Returns only files with a line that this regular expression matches, in Perl syntax. Matching is case-sensitive; to ignore case, start the expression with `(?i)`. Can't be combined with `content`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
         ],
         "responses": {
@@ -1124,7 +1305,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `invalid_request`: a parameter is malformed, or the request sets both `content` and `pattern`.\n- `invalid_pattern`: `glob` or `pattern` isn't valid, and `detail` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -1163,14 +1351,24 @@
     "/api/apps/{id}/files/{path}": {
       "get": {
         "summary": "Read a file",
-        "description": "Returns the file as JSON. For a text file, `content` holds the text. For a binary file, `binary` is `true` and `content` is left out. To get the bytes, send `Accept: application/octet-stream`.\n\nThe `ETag` header holds the file's version. To skip an unchanged file, send its ETag in `If-None-Match`, and the request returns `304`.",
+        "description": "Returns the file as JSON. For a text file, `content` holds the text, and `line_count` says how many lines it has. To read only some lines, set `lines`. For a binary file, `binary` is `true` and `content` is left out. To get the bytes, send `Accept: application/octet-stream`.\n\nThe `ETag` header holds the whole file's version, even when you read only some lines. To skip an unchanged file, send its ETag in `If-None-Match`, and the request returns `304`.",
         "tags": [
           "Files"
         ],
-        "operationId": "get__api_apps_id_files_path_",
+        "operationId": "read_file",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -1201,6 +1399,15 @@
               "type": "string"
             },
             "description": "One or more quoted ETags from earlier reads. If the file still matches one of them, the request returns `304` with no body."
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "description": "Returns only these lines of a text file: a range such as `120-180`, a start such as `120-` (to the end), or one line such as `120`. Lines are numbered from 1, and both ends are inclusive. An end past the last line stops at the last line.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9]\\d{0,8}(-([1-9]\\d{0,8})?)?$"
+            }
           }
         ],
         "responses": {
@@ -1232,7 +1439,14 @@
             "description": "The file still matches `If-None-Match`."
           },
           "400": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `invalid_request`: `lines` is malformed, or it's set with `Accept: application/octet-stream`.\n- `line_out_of_range`: `lines` starts past the file's last line.\n- `binary_file`: `lines` is set for a binary file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -1273,10 +1487,20 @@
         "tags": [
           "Files"
         ],
-        "operationId": "put__api_apps_id_files_path_",
+        "operationId": "write_file",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -1388,16 +1612,6 @@
               }
             }
           },
-          "201": {
-            "description": "The new file.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/File"
-                }
-              }
-            }
-          },
           "400": {
             "$ref": "#/components/responses/Error"
           },
@@ -1463,10 +1677,20 @@
         "tags": [
           "Files"
         ],
-        "operationId": "delete__api_apps_id_files_path_",
+        "operationId": "delete_file",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -1593,17 +1817,27 @@
         }
       }
     },
-    "/api/apps/{id}/command": {
+    "/api/apps/{id}/commands": {
       "post": {
         "summary": "Run a command",
         "description": "Runs a shell command in the App's sandbox and returns its output after it finishes or times out.\n\nTo retry safely, send the same `Idempotency-Key`. A retry returns the first run's result instead of running the command again.",
         "tags": [
           "Sandbox"
         ],
-        "operationId": "post__api_apps_id_command",
+        "operationId": "run_command",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -1750,10 +1984,20 @@
         "tags": [
           "Sandbox"
         ],
-        "operationId": "get__api_apps_id_git",
+        "operationId": "get_git",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -1840,10 +2084,20 @@
         "tags": [
           "Sandbox"
         ],
-        "operationId": "post__api_apps_id_commits",
+        "operationId": "create_commit",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -1978,14 +2232,24 @@
       },
       "get": {
         "summary": "List commits",
-        "description": "Lists the App's commits, newest first. To restore a commit, pass its `id` to `POST /api/apps/{id}/restore`. To find the commit for a Git SHA, search by `commit_sha`.",
+        "description": "Lists the App's commits, newest first. To restore a commit, pass its `id` to `POST /api/apps/{id}/restore`, and to publish it, pass it as `commit_id` to `POST /api/apps/{id}/deployments`. To find the commit for a Git SHA, search by `commit_sha`.",
         "tags": [
           "Sandbox"
         ],
-        "operationId": "get__api_apps_id_commits",
+        "operationId": "list_commits",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -2012,19 +2276,19 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of commits to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first commits.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
             "name": "sort",
             "in": "query",
-            "description": "A comma-separated list of fields to sort by: `created_at` or `sequence`. Each field sorts ascending. To sort a field descending, prefix it with `-`. Ties are sorted by `id`.",
+            "description": "A comma-separated list of fields to sort by: `created_at`. Each field sorts ascending. To sort a field descending, prefix it with `-`. Ties are sorted by `id`.",
             "schema": {
               "type": "string",
               "default": "-created_at"
@@ -2085,10 +2349,20 @@
         "tags": [
           "Sandbox"
         ],
-        "operationId": "post__api_apps_id_restore",
+        "operationId": "restore_commit",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -2233,14 +2507,24 @@
     "/api/apps/{id}/preview": {
       "post": {
         "summary": "Create a preview link",
-        "description": "Returns a short-lived URL that opens the sandbox's dev server in a browser.",
+        "description": "Returns a short-lived URL that opens the sandbox's dev server in a browser. The request starts the dev server if it isn't running, and waits for it to serve the sandbox's current files, including a rebuild that a recent change started.\n\nIf the dev server can't build or start the App, the request returns `422 preview_failed`, and `detail` has the dev server's output from that build. After a change breaks a rebuild, the dev server keeps serving the previous build, but the request still returns `422` until the App builds again. To check the App after a change, call this endpoint, then read its logs with `GET /api/apps/{id}/logs`.",
         "tags": [
           "Sandbox"
         ],
-        "operationId": "post__api_apps_id_preview",
+        "operationId": "create_preview",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -2254,12 +2538,30 @@
               "pattern": "^app_[0-9A-Za-z]{24}$",
               "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key for this request, up to 200 printable characters. The request stores nothing, so a retry makes a new one whatever the key; the API returns the key in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "The preview link.",
-            "headers": {},
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2280,11 +2582,18 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
-            "$ref": "#/components/responses/Error"
-          },
           "410": {
             "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "description": "- `preview_failed`: the dev server can't build or start the App. `detail` has its output from that build. Change the source, then retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/Error"
@@ -2315,10 +2624,20 @@
         "tags": [
           "Sandbox"
         ],
-        "operationId": "post__api_apps_id_stop",
+        "operationId": "stop_sandbox",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -2410,15 +2729,25 @@
     },
     "/api/apps/{id}/deployments": {
       "post": {
-        "summary": "Publish a commit",
-        "description": "Publishes a commit and waits until it's serving. By default, the request publishes the sandbox's current commit. Publishing an unpublished App puts it back online.",
+        "summary": "Deploy the App",
+        "description": "Publishes the App to production and waits until the new version serves. By default, the request first commits any changes in the sandbox, then publishes that commit; pass `commit_id` to publish an earlier version. Publishing an unpublished App puts it back online.",
         "tags": [
           "Deployments"
         ],
-        "operationId": "post__api_apps_id_deployments",
+        "operationId": "deploy",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -2453,10 +2782,10 @@
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
                 "properties": {
-                  "commit": {
-                    "description": "The Git SHA of the commit to publish. Default: the sandbox's current commit.",
+                  "commit_id": {
+                    "description": "The ID of the commit to publish, from `GET /api/apps/{id}/commits`. Default: the sandbox's files as they are, committed first if they changed since the last commit.",
                     "type": "string",
-                    "pattern": "^[a-f0-9]{40}$"
+                    "pattern": "^cmt_[0-9A-Za-z]{24}$"
                   }
                 },
                 "additionalProperties": false
@@ -2500,7 +2829,14 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `not_found`: the App, or the commit that `commit_id` names, doesn't exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
             "description": "- `deployment_unsettled`: another deployment of the App is still in progress, and `detail` names it. Deploy again after it finishes.\n- `idempotency_conflict`: the key was used with a different request.\n- `idempotency_expired`: the key is too old to reuse.",
@@ -2513,7 +2849,7 @@
             }
           },
           "410": {
-            "description": "- `app_deleted`: the App was deleted before the request, or while it was publishing and the publication didn't complete. If the publication completed before the deletion, the request returns `200` with `activation_status` set to `disabled`. The deployment stays readable.",
+            "description": "- `app_deleted`: the App was deleted before the request, or while it was publishing and the publication didn't complete. If the publication completed before the deletion, the request returns `200` with `status` set to `disabled`. The deployment stays readable.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2562,10 +2898,20 @@
         "tags": [
           "Deployments"
         ],
-        "operationId": "get__api_apps_id_deployments",
+        "operationId": "list_deployments",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -2592,13 +2938,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of deployments to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first deployments.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -2611,9 +2957,9 @@
             }
           },
           {
-            "name": "source_commit",
+            "name": "commit_sha",
             "in": "query",
-            "description": "Returns only deployments whose `source_commit` contains this text, ignoring case.",
+            "description": "Returns only deployments whose `commit_sha` contains this text, ignoring case.",
             "schema": {
               "type": "string",
               "minLength": 1,
@@ -2651,14 +2997,24 @@
     "/api/apps/{id}/deployments/{deployment_id}": {
       "get": {
         "summary": "Get a deployment",
-        "description": "Returns the deployment, including its publication status, activation status, and database migrations.",
+        "description": "Returns the deployment, including its status, why it failed, and its database migrations.",
         "tags": [
           "Deployments"
         ],
-        "operationId": "get__api_apps_id_deployments_deployment_id_",
+        "operationId": "get_deployment",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -2697,9 +3053,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -2719,10 +3072,20 @@
         "tags": [
           "Deployments"
         ],
-        "operationId": "post__api_apps_id_unpublish",
+        "operationId": "unpublish_app",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
           }
         ],
         "parameters": [
@@ -2813,10 +3176,20 @@
         "tags": [
           "Monitoring"
         ],
-        "operationId": "get__api_apps_id_events",
+        "operationId": "list_events",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -2843,13 +3216,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of events to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first events.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -2922,10 +3295,20 @@
         "tags": [
           "Monitoring"
         ],
-        "operationId": "get__api_apps_id_logs",
+        "operationId": "list_logs",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -2952,22 +3335,22 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of log entries to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first log entries.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
             "name": "sort",
             "in": "query",
-            "description": "A comma-separated list of fields to sort by: `time`. Each field sorts ascending. To sort a field descending, prefix it with `-`. Ties are sorted by `id`.",
+            "description": "A comma-separated list of fields to sort by: `created_at`. Each field sorts ascending. To sort a field descending, prefix it with `-`. Ties are sorted by `id`.",
             "schema": {
               "type": "string",
-              "default": "-time"
+              "default": "-created_at"
             }
           },
           {
@@ -3072,10 +3455,20 @@
         "tags": [
           "Templates"
         ],
-        "operationId": "get__api_templates",
+        "operationId": "list_templates",
         "security": [
           {
             "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
           }
         ],
         "parameters": [
@@ -3091,13 +3484,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of templates to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first templates.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -3140,8 +3533,138 @@
           },
           "403": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/feedback": {
+      "post": {
+        "summary": "Send feedback",
+        "description": "Sends feedback to the Judt team: a bug, something that was harder than it should be, or anything else. People and agents can both send it, and the team reads every message.\n\nYou can send up to 30 messages an hour. After that, the request returns `429 feedback_limit`.",
+        "tags": [
+          "Feedback"
+        ],
+        "operationId": "send_feedback",
+        "security": [
+          {
+            "ApiToken": []
           },
-          "404": {
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key that identifies this request for retries, up to 200 printable characters. A retry with the same key and input returns the first request's result instead of repeating the work. If you omit the key, the API generates one and returns it in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "default": "general",
+                    "description": "What kind of feedback it is: `bug` for something broken, `friction` for something that works but is hard to use, or `general` for anything else. Default: `general`.",
+                    "type": "string",
+                    "enum": [
+                      "bug",
+                      "friction",
+                      "general"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000,
+                    "description": "The feedback, up to 10,000 characters. Say what you tried, what happened, and what you expected."
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved feedback.",
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              },
+              "Idempotency-Retry-Window": {
+                "schema": {
+                  "type": "string",
+                  "example": "2592000"
+                },
+                "description": "How long you can retry with the same key, in seconds: 2592000 (30 days)."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Feedback"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "- `idempotency_conflict`: the key was used with a different request.\n- `idempotency_expired`: the key is too old to reuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "description": "- `feedback_limit`: you've sent 30 messages in the last hour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3150,11 +3673,11 @@
     "/api/models": {
       "get": {
         "summary": "List models",
-        "description": "Returns the models that the agent can run on. To choose one, pass its `id` as `model` when you create a session or send a message.",
+        "description": "Returns the models that the agent can run on, starting with `auto`, the default. `auto` chooses a model for each message by how hard the task is, and each turn's `model` shows the choice. To choose a model yourself, pass its `id` as `model` when you create a session or send a message.",
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_models",
+        "operationId": "list_models",
         "security": [
           {
             "ApiToken": []
@@ -3172,19 +3695,10 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
           "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          },
-          "410": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3197,7 +3711,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "post__api_apps_id_sessions",
+        "operationId": "create_session",
         "security": [
           {
             "ApiToken": []
@@ -3242,7 +3756,7 @@
                     "maxLength": 200
                   },
                   "model": {
-                    "description": "The session's default model. Default: the model marked `default` in `GET /api/models`.",
+                    "description": "The session's default model. Default: `auto`.",
                     "type": "string",
                     "maxLength": 100
                   },
@@ -3251,6 +3765,17 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 32768
+                  },
+                  "effort": {
+                    "description": "The effort for the first turn. Requires `message`.",
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -3337,7 +3862,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_apps_id_sessions",
+        "operationId": "list_sessions",
         "security": [
           {
             "ApiToken": []
@@ -3367,13 +3892,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of sessions to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first sessions.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -3445,7 +3970,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_apps_id_sessions_session_id_",
+        "operationId": "get_session",
         "security": [
           {
             "ApiToken": []
@@ -3486,9 +4011,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -3509,7 +4031,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "patch__api_apps_id_sessions_session_id_",
+        "operationId": "update_session",
         "security": [
           {
             "ApiToken": []
@@ -3536,6 +4058,17 @@
               "type": "string",
               "pattern": "^ses_[0-9A-Za-z]{24}$",
               "example": "ses_Zj7XhMgplmTJcp5Dk4vcYuk0"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key that identifies this request for retries, up to 200 printable characters. A retry with the same key and input returns the first request's result instead of repeating the work. If you omit the key, the API generates one and returns it in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             }
           }
         ],
@@ -3573,6 +4106,21 @@
                   "$ref": "#/components/schemas/Session"
                 }
               }
+            },
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              },
+              "Idempotency-Retry-Window": {
+                "schema": {
+                  "type": "string",
+                  "example": "2592000"
+                },
+                "description": "How long you can retry with the same key, in seconds: 2592000 (30 days)."
+              }
             }
           },
           "400": {
@@ -3586,6 +4134,16 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "- `idempotency_conflict`: the key was used with a different request.\n- `idempotency_expired`: the key is too old to reuse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "410": {
             "$ref": "#/components/responses/Error"
@@ -3608,7 +4166,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "delete__api_apps_id_sessions_session_id_",
+        "operationId": "delete_session",
         "security": [
           {
             "ApiToken": []
@@ -3710,7 +4268,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "post__api_apps_id_sessions_session_id_turns",
+        "operationId": "create_turn",
         "security": [
           {
             "ApiToken": []
@@ -3769,6 +4327,17 @@
                     "description": "A model for this turn only. Default: the session's model.",
                     "type": "string",
                     "maxLength": 100
+                  },
+                  "effort": {
+                    "type": "string",
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max"
+                    ],
+                    "description": "How much the model thinks, from `low` to `max`. Higher effort is slower and uses more tokens, and helps on tasks that need careful reasoning. Default: Auto's choice when `model` is `auto`; otherwise the model's default."
                   }
                 },
                 "required": [
@@ -3858,7 +4427,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_apps_id_sessions_session_id_turns",
+        "operationId": "list_turns",
         "security": [
           {
             "ApiToken": []
@@ -3899,13 +4468,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
-            "description": "The number of turns to skip.",
+            "description": "Where to start: the `next_cursor` of the page before, listed with the same `sort`. Without it, the list starts with the first turns.",
             "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
             }
           },
           {
@@ -3970,7 +4539,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_apps_id_sessions_session_id_turns_turn_id_",
+        "operationId": "get_turn",
         "security": [
           {
             "ApiToken": []
@@ -4022,9 +4591,6 @@
               }
             }
           },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
           "401": {
             "$ref": "#/components/responses/Error"
           },
@@ -4047,7 +4613,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "post__api_apps_id_sessions_session_id_turns_turn_id_cancel",
+        "operationId": "cancel_turn",
         "security": [
           {
             "ApiToken": []
@@ -4160,7 +4726,7 @@
         "tags": [
           "Agents"
         ],
-        "operationId": "post__api_apps_id_sessions_session_id_turns_turn_id_decline",
+        "operationId": "decline_input",
         "security": [
           {
             "ApiToken": []
@@ -4289,11 +4855,11 @@
     "/api/apps/{id}/sessions/{session_id}/events": {
       "get": {
         "summary": "List session events",
-        "description": "Returns the session's events in sequence order, after the `after` cursor.\n\nTo follow the session live, send `Accept: text/event-stream`. The stream sends the following:\n\n- A `session.status` event, without an `id`, whose data is the `Session`.\n- Every event after the cursor, with `id` set to its sequence and `event` set to its type.\n- New events as they happen, and `message.delta` events with partial agent text. A `message.delta` event has no `id`, and its data is `{turn_id, text}`. The log doesn't store it.\n- A heartbeat comment every 15 seconds.\n\nThe server closes the stream within 10 minutes. To resume, reconnect with `Last-Event-ID`.",
+        "description": "Returns the session's events in sequence order, after `cursor`. The cursor is an event's `sequence`: pass a page's `next_cursor`, or a session's `last_sequence` to get only what happens next.\n\nTo follow the session live, send `Accept: text/event-stream`. The stream sends the following:\n\n- A `session.status` event, without an `id`, whose data is the `Session`.\n- Every event after the cursor, with `id` set to its sequence and `event` set to its type.\n- New events as they happen, and `message.delta` events with partial agent text. A `message.delta` event has no `id`, and its data is `{turn_id, text}`. The log doesn't store it.\n- A heartbeat comment every 15 seconds.\n\nThe server closes the stream within 10 minutes. To resume, reconnect with `Last-Event-ID`.",
         "tags": [
           "Agents"
         ],
-        "operationId": "get__api_apps_id_sessions_session_id_events",
+        "operationId": "list_session_events",
         "security": [
           {
             "ApiToken": []
@@ -4323,7 +4889,7 @@
             }
           },
           {
-            "name": "after",
+            "name": "cursor",
             "in": "query",
             "description": "Returns only events whose sequence is greater than this value.",
             "schema": {
@@ -4346,7 +4912,7 @@
           {
             "name": "Last-Event-ID",
             "in": "header",
-            "description": "For streams, the sequence of the last event that you received. The stream resumes after it, and the header takes precedence over `after`.",
+            "description": "For streams, the sequence of the last event that you received. The stream resumes after it, and the header takes precedence over `cursor`.",
             "schema": {
               "type": "integer",
               "minimum": 0
@@ -4394,7 +4960,27 @@
       "ApiToken": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API token for one organization. You create and revoke tokens in the dashboard. A token scoped to one App can reach only that App, so give that kind of token to an agent."
+        "description": "An API token for one organization. You create and revoke tokens in the dashboard. A token scoped to one App can reach only that App, so give that kind of token to an agent. An organization-wide token can create a short-lived one with `POST /api/tokens`."
+      },
+      "OAuth": {
+        "type": "oauth2",
+        "description": "An OAuth access token for one person and organization, sent as a bearer token. An agent registers with dynamic client registration and signs in with the authorization code or device authorization grant: https://judt.ai/auth.md describes each step. Request the resource https://api.judt.ai, and also https://api.judt.ai/mcp to use the same token on the MCP server. The person's role still applies.",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://judt.ai/api/auth/oauth2/authorize",
+            "tokenUrl": "https://judt.ai/api/auth/oauth2/token",
+            "refreshUrl": "https://judt.ai/api/auth/oauth2/token",
+            "scopes": {
+              "apps:read": "See the organization's Apps, with their files, deployments, and logs.",
+              "apps:write": "Change the organization's Apps: edit files, run commands, deploy, and manage Secrets."
+            }
+          }
+        }
+      },
+      "DPoP": {
+        "type": "http",
+        "scheme": "DPoP",
+        "description": "An OAuth access token bound to a DPoP key (RFC 9449), sent with a DPoP proof. A token request with a DPoP proof gets one, and a Personal Agent Protocol Session Token is one: a Personal Agent starts at https://judt.ai/.well-known/poppy.json. Scopes are the same as for OAuth."
       }
     },
     "schemas": {
@@ -4542,7 +5128,7 @@
                   "failed",
                   "unknown"
                 ],
-                "description": "The state of the published App:\n- `unpublished`: nothing is published, either before the first deployment or after you unpublish the App. The next deployment publishes it.\n- `starting`: the published version is starting.\n- `ready`: the App is serving requests.\n- `idle`: the App is asleep between requests. The next request wakes it.\n- `stopped`: the App isn't serving until something changes. `failure_code` says why.\n- `unhealthy`: the App is running but isn't healthy. `failure_code` says why.\n- `failed`: the App failed. `failure_code` says why.\n- `unknown`: the runtime hasn't reported the App's state recently."
+                "description": "The state of the published App:\n- `unpublished`: nothing is published, either before the first deployment or after you unpublish the App. The next deployment publishes it.\n- `starting`: the published version is starting.\n- `ready`: the App is serving requests.\n- `idle`: the App is asleep between requests. The next request wakes it.\n- `stopped`: the App isn't serving until something changes. `error` says why.\n- `unhealthy`: the App is running but isn't healthy. `error` says why.\n- `failed`: the App failed. `error` says why.\n- `unknown`: the runtime hasn't reported the App's state recently."
               },
               "deployment_id": {
                 "description": "The ID of the deployment that's serving, or null if nothing is published.",
@@ -4551,12 +5137,31 @@
                   "null"
                 ]
               },
-              "failure_code": {
-                "description": "Why the App stopped, failed, or is unhealthy, or null otherwise.",
-                "type": [
-                  "string",
-                  "null"
-                ]
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "description": "A stable code for the error."
+                      },
+                      "message": {
+                        "type": "string",
+                        "description": "A readable explanation of the error."
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Why the App stopped, failed, or is unhealthy, or null otherwise."
               },
               "observed_at": {
                 "anyOf": [
@@ -4577,13 +5182,13 @@
               "password_updated_at",
               "status",
               "deployment_id",
-              "failure_code",
+              "error",
               "observed_at"
             ],
             "additionalProperties": false,
             "description": "The published App and who can reach it."
           },
-          "soft_deleted_at": {
+          "deleted_at": {
             "anyOf": [
               {
                 "type": "string",
@@ -4594,7 +5199,7 @@
                 "type": "null"
               }
             ],
-            "description": "When the App was deleted, or null if it isn't deleted."
+            "description": "When the App was deleted, or null if it isn't deleted. A deleted App stays readable for 30 days."
           },
           "created_at": {
             "type": "string",
@@ -4619,7 +5224,7 @@
           "sandbox_status",
           "sandbox_error",
           "production",
-          "soft_deleted_at",
+          "deleted_at",
           "created_at",
           "updated_at"
         ],
@@ -4774,7 +5379,7 @@
                         "failed",
                         "unknown"
                       ],
-                      "description": "The state of the published App:\n- `unpublished`: nothing is published, either before the first deployment or after you unpublish the App. The next deployment publishes it.\n- `starting`: the published version is starting.\n- `ready`: the App is serving requests.\n- `idle`: the App is asleep between requests. The next request wakes it.\n- `stopped`: the App isn't serving until something changes. `failure_code` says why.\n- `unhealthy`: the App is running but isn't healthy. `failure_code` says why.\n- `failed`: the App failed. `failure_code` says why.\n- `unknown`: the runtime hasn't reported the App's state recently."
+                      "description": "The state of the published App:\n- `unpublished`: nothing is published, either before the first deployment or after you unpublish the App. The next deployment publishes it.\n- `starting`: the published version is starting.\n- `ready`: the App is serving requests.\n- `idle`: the App is asleep between requests. The next request wakes it.\n- `stopped`: the App isn't serving until something changes. `error` says why.\n- `unhealthy`: the App is running but isn't healthy. `error` says why.\n- `failed`: the App failed. `error` says why.\n- `unknown`: the runtime hasn't reported the App's state recently."
                     },
                     "deployment_id": {
                       "description": "The ID of the deployment that's serving, or null if nothing is published.",
@@ -4783,12 +5388,31 @@
                         "null"
                       ]
                     },
-                    "failure_code": {
-                      "description": "Why the App stopped, failed, or is unhealthy, or null otherwise.",
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "description": "A stable code for the error."
+                            },
+                            "message": {
+                              "type": "string",
+                              "description": "A readable explanation of the error."
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Why the App stopped, failed, or is unhealthy, or null otherwise."
                     },
                     "observed_at": {
                       "anyOf": [
@@ -4809,13 +5433,13 @@
                     "password_updated_at",
                     "status",
                     "deployment_id",
-                    "failure_code",
+                    "error",
                     "observed_at"
                   ],
                   "additionalProperties": false,
                   "description": "The published App and who can reach it."
                 },
-                "soft_deleted_at": {
+                "deleted_at": {
                   "anyOf": [
                     {
                       "type": "string",
@@ -4826,7 +5450,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "When the App was deleted, or null if it isn't deleted."
+                  "description": "When the App was deleted, or null if it isn't deleted. A deleted App stays readable for 30 days."
                 },
                 "created_at": {
                   "type": "string",
@@ -4851,7 +5475,7 @@
                 "sandbox_status",
                 "sandbox_error",
                 "production",
-                "soft_deleted_at",
+                "deleted_at",
                 "created_at",
                 "updated_at"
               ],
@@ -4859,31 +5483,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -4904,72 +5519,53 @@
                   "type": "string",
                   "description": "The ID of the App that the deployment belongs to."
                 },
-                "source_commit": {
+                "commit_id": {
+                  "description": "The ID of the deployed commit, or null if Judt didn't make the commit, such as a template's first commit.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "commit_sha": {
                   "type": "string",
                   "description": "The Git SHA of the deployed commit."
                 },
-                "commit_id": {
-                  "description": "The ID of the deployed commit, or null if the API has no record of it.",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "source_backup_status": {
+                "status": {
                   "type": "string",
                   "enum": [
-                    "pending",
-                    "healthy",
-                    "degraded"
+                    "publishing",
+                    "starting",
+                    "succeeded",
+                    "failed",
+                    "disabled"
                   ],
-                  "description": "Whether the deployed source is backed up:\n- `pending`: the backup isn't finished.\n- `healthy`: the source is backed up.\n- `degraded`: the backup is incomplete."
+                  "description": "Where the deployment is:\n- `publishing`: the version is being built and published, after any database migrations that must run first.\n- `starting`: production points to this version, and it's starting.\n- `succeeded`: the version started serving. It stays `succeeded` after a later deployment replaces it or the App is unpublished. To see which deployment is serving now, check the App's `production.deployment_id`.\n- `failed`: the version wasn't published, or it didn't start serving. `error` says why.\n- `disabled`: the App was deleted while the version was publishing, so it never served."
                 },
-                "publication_status": {
-                  "type": "string",
-                  "enum": [
-                    "pending",
-                    "published",
-                    "failed"
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "description": "A stable code for the error."
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "A readable explanation of the error."
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
                   ],
-                  "description": "Whether the version was published:\n- `pending`: the version is being published.\n- `published`: production points to this version.\n- `failed`: publishing failed, and `failure_code` says why."
-                },
-                "activation_status": {
-                  "type": "string",
-                  "enum": [
-                    "unverified",
-                    "active",
-                    "disabled",
-                    "failed"
-                  ],
-                  "description": "Whether the published version started serving. This result doesn't change after a later deployment replaces the version or the App is unpublished. To see which deployment is serving now, check the App's `production.deployment_id`.\n- `unverified`: serving isn't confirmed yet.\n- `active`: the version started serving.\n- `disabled`: the version was published while the App was being deleted, so it never served.\n- `failed`: the version didn't start serving, and `failure_code` says why."
-                },
-                "expected_version": {
-                  "description": "The version that production reports after this deployment, or null until it's known.",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "observed_version": {
-                  "description": "The version that production last reported, or null if it hasn't reported one.",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "failure_code": {
-                  "description": "Why publication or activation failed, or null if neither failed or publication is still in progress.",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "failure_message": {
-                  "description": "A readable explanation of the failure, or null.",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "description": "Why the deployment failed, or null if it didn't fail."
                 },
                 "migrations": {
                   "anyOf": [
@@ -5080,15 +5676,10 @@
               "required": [
                 "id",
                 "app_id",
-                "source_commit",
                 "commit_id",
-                "source_backup_status",
-                "publication_status",
-                "activation_status",
-                "expected_version",
-                "observed_version",
-                "failure_code",
-                "failure_message",
+                "commit_sha",
+                "status",
+                "error",
                 "migrations",
                 "published_at",
                 "created_at"
@@ -5097,31 +5688,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -5197,21 +5779,11 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "The commit's ID, which starts with `cmt_`. To restore the commit, pass this ID to `POST /api/apps/{id}/restore`."
+            "description": "The commit's ID, which starts with `cmt_`. To restore the commit, pass this ID to `POST /api/apps/{id}/restore`. To publish it, pass it to `POST /api/apps/{id}/deployments`."
           },
           "app_id": {
             "type": "string",
             "description": "The ID of the App that the commit belongs to."
-          },
-          "caller_id": {
-            "type": "string",
-            "description": "The ID of the user who created the commit."
-          },
-          "sequence": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The commit's position in the App's history, starting at 0.",
-            "example": 12
           },
           "commit_sha": {
             "type": "string",
@@ -5221,15 +5793,9 @@
             "type": "string",
             "description": "The commit message."
           },
-          "recovery_point_id": {
+          "created_by": {
             "type": "string",
-            "description": "The ID of the commit's backup."
-          },
-          "durable_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "When the commit's backup was saved.",
-            "example": "2026-10-03T14:01:30.000Z"
+            "description": "The ID of the user who created the commit."
           },
           "created_at": {
             "type": "string",
@@ -5241,12 +5807,9 @@
         "required": [
           "id",
           "app_id",
-          "caller_id",
-          "sequence",
           "commit_sha",
           "message",
-          "recovery_point_id",
-          "durable_at",
+          "created_by",
           "created_at"
         ],
         "additionalProperties": false
@@ -5262,21 +5825,11 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "The commit's ID, which starts with `cmt_`. To restore the commit, pass this ID to `POST /api/apps/{id}/restore`."
+                  "description": "The commit's ID, which starts with `cmt_`. To restore the commit, pass this ID to `POST /api/apps/{id}/restore`. To publish it, pass it to `POST /api/apps/{id}/deployments`."
                 },
                 "app_id": {
                   "type": "string",
                   "description": "The ID of the App that the commit belongs to."
-                },
-                "caller_id": {
-                  "type": "string",
-                  "description": "The ID of the user who created the commit."
-                },
-                "sequence": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "The commit's position in the App's history, starting at 0.",
-                  "example": 12
                 },
                 "commit_sha": {
                   "type": "string",
@@ -5286,15 +5839,9 @@
                   "type": "string",
                   "description": "The commit message."
                 },
-                "recovery_point_id": {
+                "created_by": {
                   "type": "string",
-                  "description": "The ID of the commit's backup."
-                },
-                "durable_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "When the commit's backup was saved.",
-                  "example": "2026-10-03T14:01:30.000Z"
+                  "description": "The ID of the user who created the commit."
                 },
                 "created_at": {
                   "type": "string",
@@ -5306,43 +5853,31 @@
               "required": [
                 "id",
                 "app_id",
-                "caller_id",
-                "sequence",
                 "commit_sha",
                 "message",
-                "recovery_point_id",
-                "durable_at",
+                "created_by",
                 "created_at"
               ],
               "additionalProperties": false
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -5358,72 +5893,53 @@
             "type": "string",
             "description": "The ID of the App that the deployment belongs to."
           },
-          "source_commit": {
+          "commit_id": {
+            "description": "The ID of the deployed commit, or null if Judt didn't make the commit, such as a template's first commit.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commit_sha": {
             "type": "string",
             "description": "The Git SHA of the deployed commit."
           },
-          "commit_id": {
-            "description": "The ID of the deployed commit, or null if the API has no record of it.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "source_backup_status": {
+          "status": {
             "type": "string",
             "enum": [
-              "pending",
-              "healthy",
-              "degraded"
+              "publishing",
+              "starting",
+              "succeeded",
+              "failed",
+              "disabled"
             ],
-            "description": "Whether the deployed source is backed up:\n- `pending`: the backup isn't finished.\n- `healthy`: the source is backed up.\n- `degraded`: the backup is incomplete."
+            "description": "Where the deployment is:\n- `publishing`: the version is being built and published, after any database migrations that must run first.\n- `starting`: production points to this version, and it's starting.\n- `succeeded`: the version started serving. It stays `succeeded` after a later deployment replaces it or the App is unpublished. To see which deployment is serving now, check the App's `production.deployment_id`.\n- `failed`: the version wasn't published, or it didn't start serving. `error` says why.\n- `disabled`: the App was deleted while the version was publishing, so it never served."
           },
-          "publication_status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "published",
-              "failed"
+          "error": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "A stable code for the error."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "A readable explanation of the error."
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
             ],
-            "description": "Whether the version was published:\n- `pending`: the version is being published.\n- `published`: production points to this version.\n- `failed`: publishing failed, and `failure_code` says why."
-          },
-          "activation_status": {
-            "type": "string",
-            "enum": [
-              "unverified",
-              "active",
-              "disabled",
-              "failed"
-            ],
-            "description": "Whether the published version started serving. This result doesn't change after a later deployment replaces the version or the App is unpublished. To see which deployment is serving now, check the App's `production.deployment_id`.\n- `unverified`: serving isn't confirmed yet.\n- `active`: the version started serving.\n- `disabled`: the version was published while the App was being deleted, so it never served.\n- `failed`: the version didn't start serving, and `failure_code` says why."
-          },
-          "expected_version": {
-            "description": "The version that production reports after this deployment, or null until it's known.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "observed_version": {
-            "description": "The version that production last reported, or null if it hasn't reported one.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "failure_code": {
-            "description": "Why publication or activation failed, or null if neither failed or publication is still in progress.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "failure_message": {
-            "description": "A readable explanation of the failure, or null.",
-            "type": [
-              "string",
-              "null"
-            ]
+            "description": "Why the deployment failed, or null if it didn't fail."
           },
           "migrations": {
             "anyOf": [
@@ -5534,15 +6050,10 @@
         "required": [
           "id",
           "app_id",
-          "source_commit",
           "commit_id",
-          "source_backup_status",
-          "publication_status",
-          "activation_status",
-          "expected_version",
-          "observed_version",
-          "failure_code",
-          "failure_message",
+          "commit_sha",
+          "status",
+          "error",
           "migrations",
           "published_at",
           "created_at"
@@ -5800,31 +6311,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -5836,7 +6338,7 @@
             "type": "string",
             "description": "An opaque, stable ID. While you page newest first, new entries shift later pages, so skip entries whose ID you've already seen."
           },
-          "time": {
+          "created_at": {
             "type": "string",
             "format": "date-time",
             "description": "When the entry was recorded, to the nanosecond.",
@@ -5860,7 +6362,7 @@
               "deployment",
               "platform"
             ],
-            "description": "What wrote the entry:\n- `request`: a request that the App served, from its access log.\n- `app`: a line that the App's code wrote, or an exception that it threw.\n- `dev_server`: the sandbox's dev server building, reloading, or exiting.\n- `runtime`: production instances starting, stopping, or failing.\n- `deployment`: a deployment's build output or failure.\n- `platform`: a notice from judt, such as `telemetry.capped` when the App logged more than its per-minute limit."
+            "description": "What wrote the entry:\n- `request`: a request that the App served, from its access log.\n- `app`: a line that the App's code wrote, or an exception that it threw.\n- `dev_server`: the sandbox's dev server building, reloading, or exiting.\n- `runtime`: production instances starting, stopping, or failing.\n- `deployment`: a deployment's build output or failure.\n- `platform`: a notice from Judt, such as `telemetry.capped` when the App logged more than its per-minute limit."
           },
           "level": {
             "type": "string",
@@ -5961,7 +6463,7 @@
         },
         "required": [
           "id",
-          "time",
+          "created_at",
           "environment",
           "source",
           "level",
@@ -5986,7 +6488,7 @@
                   "type": "string",
                   "description": "An opaque, stable ID. While you page newest first, new entries shift later pages, so skip entries whose ID you've already seen."
                 },
-                "time": {
+                "created_at": {
                   "type": "string",
                   "format": "date-time",
                   "description": "When the entry was recorded, to the nanosecond.",
@@ -6010,7 +6512,7 @@
                     "deployment",
                     "platform"
                   ],
-                  "description": "What wrote the entry:\n- `request`: a request that the App served, from its access log.\n- `app`: a line that the App's code wrote, or an exception that it threw.\n- `dev_server`: the sandbox's dev server building, reloading, or exiting.\n- `runtime`: production instances starting, stopping, or failing.\n- `deployment`: a deployment's build output or failure.\n- `platform`: a notice from judt, such as `telemetry.capped` when the App logged more than its per-minute limit."
+                  "description": "What wrote the entry:\n- `request`: a request that the App served, from its access log.\n- `app`: a line that the App's code wrote, or an exception that it threw.\n- `dev_server`: the sandbox's dev server building, reloading, or exiting.\n- `runtime`: production instances starting, stopping, or failing.\n- `deployment`: a deployment's build output or failure.\n- `platform`: a notice from Judt, such as `telemetry.capped` when the App logged more than its per-minute limit."
                 },
                 "level": {
                   "type": "string",
@@ -6111,7 +6613,7 @@
               },
               "required": [
                 "id",
-                "time",
+                "created_at",
                 "environment",
                 "source",
                 "level",
@@ -6125,31 +6627,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -6193,8 +6686,34 @@
             "description": "True if the file isn't UTF-8 text; false otherwise. For a binary file, `content` is left out. To get the bytes, send `Accept: application/octet-stream`."
           },
           "content": {
-            "description": "The file's text. Left out for a binary file.",
+            "description": "The file's text, or only the lines that `lines` asked for. Left out for a binary file.",
             "type": "string"
+          },
+          "line_count": {
+            "description": "How many lines the whole file has. A final line ending doesn't start another line. Left out for a binary file.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "lines": {
+            "description": "The lines that `content` holds. Present only when the request sets `lines`.",
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The first line in `content`, numbered from 1."
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The last line in `content`."
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -6222,6 +6741,34 @@
                   "minimum": 0,
                   "description": "The file's size, in bytes.",
                   "example": 2048
+                },
+                "match_count": {
+                  "description": "How many lines in the file match. Present only when the request sets `content` or `pattern`.",
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "matches": {
+                  "description": "The first 20 matching lines, in line order. Present only when the request sets `content` or `pattern`.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "The line number, from 1."
+                      },
+                      "text": {
+                        "type": "string",
+                        "description": "The line's text, without its line ending. A line longer than 300 characters is cut to the 300 around its first match, with `…` marking each cut."
+                      }
+                    },
+                    "required": [
+                      "line",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
@@ -6232,31 +6779,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -6283,25 +6821,26 @@
             "format": "uri",
             "description": "A URL that opens the sandbox's dev server."
           },
-          "expires_in": {
-            "type": "number",
-            "description": "How long the URL works, in seconds.",
-            "example": 300
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the URL stops working.",
+            "example": "2026-10-03T14:01:30.000Z"
           }
         },
         "required": [
           "url",
-          "expires_in"
+          "expires_at"
         ],
         "additionalProperties": false
       },
-      "AccessToken": {
+      "VisitorToken": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "token": {
             "type": "string",
-            "description": "The access token. Send it in the `X-Judt-Access-Token` header or the `access_token` URL parameter."
+            "description": "The visitor token. Send it in the `X-Judt-Access-Token` header or the `access_token` URL parameter."
           },
           "expires_at": {
             "type": "string",
@@ -6313,6 +6852,82 @@
         "required": [
           "token",
           "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "CreatedApiToken": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The token's ID, which starts with `tok_`."
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "The organization that the token belongs to."
+          },
+          "app_id": {
+            "description": "The one App an App-scoped token reaches; null for the whole organization",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The token's name."
+          },
+          "preview": {
+            "type": "string",
+            "description": "`judt_***` and the token's last four characters, to tell tokens apart."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-10-03T14:01:30.000Z"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the token stops working; null if it never expires."
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-10-03T14:01:30.000Z"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the token was last used, to the minute; null if it hasn't been used."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-03T14:01:30.000Z"
+          },
+          "token": {
+            "type": "string",
+            "description": "The token. Send it as a bearer token in the `Authorization` header, to the API or the MCP server. This is the only response that includes it."
+          }
+        },
+        "required": [
+          "id",
+          "organization_id",
+          "app_id",
+          "name",
+          "preview",
+          "expires_at",
+          "last_used_at",
+          "created_at",
+          "token"
         ],
         "additionalProperties": false
       },
@@ -6399,31 +7014,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -6469,6 +7075,41 @@
           "version",
           "created_at",
           "updated_at"
+        ],
+        "additionalProperties": false
+      },
+      "Feedback": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The feedback's ID, which starts with `fbk_`."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "friction",
+              "general"
+            ],
+            "description": "What kind of feedback it is."
+          },
+          "message": {
+            "type": "string",
+            "description": "The feedback."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-03T14:01:30.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "message",
+          "created_at"
         ],
         "additionalProperties": false
       },
@@ -6524,31 +7165,22 @@
             },
             "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "The maximum number of results in this page.",
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results skipped before this page.",
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of results that match the query, across all pages.",
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -6563,21 +7195,31 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "The model's ID, in the form `PROVIDER/MODEL`. Pass it as `model` on a session or a turn."
+                  "description": "The model's ID: `auto`, or `PROVIDER/MODEL`. Pass it as `model` on a session or a turn."
                 },
                 "name": {
                   "type": "string",
                   "description": "The model's display name."
                 },
                 "provider": {
-                  "type": "string",
-                  "description": "The company that provides the model."
+                  "description": "The company that provides the model, or null for `auto`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "context_window": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "description": "The maximum number of tokens the model can read in one request.",
-                  "example": 200000
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "example": 200000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The maximum number of tokens the model can read in one request, or null for `auto`."
                 },
                 "default": {
                   "type": "boolean",
@@ -6618,7 +7260,7 @@
           },
           "model": {
             "type": "string",
-            "description": "The default model for the session's turns."
+            "description": "The default model for the session's turns: `auto` or a model ID."
           },
           "status": {
             "type": "string",
@@ -6673,8 +7315,11 @@
             "description": "The tokens used by all of the session's turns."
           },
           "created_by": {
-            "type": "string",
-            "description": "The ID of the user who created the session."
+            "description": "The ID of the user who created the session, or null if that user deleted their account.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "string",
@@ -6727,7 +7372,7 @@
                 },
                 "model": {
                   "type": "string",
-                  "description": "The default model for the session's turns."
+                  "description": "The default model for the session's turns: `auto` or a model ID."
                 },
                 "status": {
                   "type": "string",
@@ -6782,8 +7427,11 @@
                   "description": "The tokens used by all of the session's turns."
                 },
                 "created_by": {
-                  "type": "string",
-                  "description": "The ID of the user who created the session."
+                  "description": "The ID of the user who created the session, or null if that user deleted their account.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "type": "string",
@@ -6812,30 +7460,25 @@
                 "updated_at"
               ],
               "additionalProperties": false
-            }
+            },
+            "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -6869,7 +7512,22 @@
           },
           "model": {
             "type": "string",
-            "description": "The model that the turn runs on."
+            "description": "The model that the turn runs on. If `requested_model` is `auto`, this is the model that Auto chose."
+          },
+          "requested_model": {
+            "type": "string",
+            "description": "The model that the turn asked for: `auto` or a model ID."
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "description": "How much the model thinks on this turn, from `low` to `max`. Auto chooses it by how much reasoning the task needs, unless the request set `effort`; with a chosen model, it is the model's default unless the request set it."
           },
           "input_request": {
             "anyOf": [
@@ -6965,7 +7623,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why the turn failed, or null if it didn't fail. The code is one of the following:\n- `agent_error`: the agent stopped unexpectedly.\n- `app_deleted`: the App was deleted.\n- `input_expired`: no one answered the input request in time.\n- `interrupted`: the turn was interrupted repeatedly without progress.\n- `turn_budget_exceeded`: the turn ran out of time."
+            "description": "Why the turn failed, or null if it didn't fail. The code is one of the following:\n- `agent_error`: the agent stopped unexpectedly.\n- `app_deleted`: the App was deleted.\n- `input_expired`: no one answered the input request in time.\n- `interrupted`: the turn was interrupted repeatedly without progress.\n- `turn_budget_exceeded`: the turn ran out of time.\n- `user_deleted`: the user the turn acts for deleted their account."
           },
           "usage": {
             "type": "object",
@@ -6998,8 +7656,11 @@
             "description": "The tokens that the turn used."
           },
           "created_by": {
-            "type": "string",
-            "description": "The ID of the user the turn acts for. The turn has that user's current role."
+            "description": "The ID of the user the turn acts for, or null if that user deleted their account. The turn has that user's current role.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "string",
@@ -7040,6 +7701,8 @@
           "status",
           "message",
           "model",
+          "requested_model",
+          "effort",
           "input_request",
           "base_commit_id",
           "error",
@@ -7086,7 +7749,22 @@
                 },
                 "model": {
                   "type": "string",
-                  "description": "The model that the turn runs on."
+                  "description": "The model that the turn runs on. If `requested_model` is `auto`, this is the model that Auto chose."
+                },
+                "requested_model": {
+                  "type": "string",
+                  "description": "The model that the turn asked for: `auto` or a model ID."
+                },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "description": "How much the model thinks on this turn, from `low` to `max`. Auto chooses it by how much reasoning the task needs, unless the request set `effort`; with a chosen model, it is the model's default unless the request set it."
                 },
                 "input_request": {
                   "anyOf": [
@@ -7182,7 +7860,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "Why the turn failed, or null if it didn't fail. The code is one of the following:\n- `agent_error`: the agent stopped unexpectedly.\n- `app_deleted`: the App was deleted.\n- `input_expired`: no one answered the input request in time.\n- `interrupted`: the turn was interrupted repeatedly without progress.\n- `turn_budget_exceeded`: the turn ran out of time."
+                  "description": "Why the turn failed, or null if it didn't fail. The code is one of the following:\n- `agent_error`: the agent stopped unexpectedly.\n- `app_deleted`: the App was deleted.\n- `input_expired`: no one answered the input request in time.\n- `interrupted`: the turn was interrupted repeatedly without progress.\n- `turn_budget_exceeded`: the turn ran out of time.\n- `user_deleted`: the user the turn acts for deleted their account."
                 },
                 "usage": {
                   "type": "object",
@@ -7215,8 +7893,11 @@
                   "description": "The tokens that the turn used."
                 },
                 "created_by": {
-                  "type": "string",
-                  "description": "The ID of the user the turn acts for. The turn has that user's current role."
+                  "description": "The ID of the user the turn acts for, or null if that user deleted their account. The turn has that user's current role.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_at": {
                   "type": "string",
@@ -7257,6 +7938,8 @@
                 "status",
                 "message",
                 "model",
+                "requested_model",
+                "effort",
                 "input_request",
                 "base_commit_id",
                 "error",
@@ -7267,30 +7950,25 @@
                 "ended_at"
               ],
               "additionalProperties": false
-            }
+            },
+            "description": "The results in this page."
           },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "example": 50
+          "has_more": {
+            "type": "boolean",
+            "description": "True if more results follow this page; false otherwise."
           },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 0
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 137
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "offset",
-          "total"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },
@@ -8502,23 +9180,25 @@
                   "description": "The turn was canceled."
                 }
               ]
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "description": "The maximum number of events in this page.",
-            "example": 50
+            },
+            "description": "The results in this page."
           },
           "has_more": {
             "type": "boolean",
-            "description": "True if more events follow the last one; false otherwise. To get them, list again with `after` set to the last event's sequence."
+            "description": "True if more results follow this page; false otherwise."
+          },
+          "next_cursor": {
+            "description": "Where the next page starts: to get it, list again with this value as `cursor`. A cursor from the last page later finds results added after it. Null if the list is empty.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "results",
-          "limit",
-          "has_more"
+          "has_more",
+          "next_cursor"
         ],
         "additionalProperties": false
       },

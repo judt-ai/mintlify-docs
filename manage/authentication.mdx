@@ -1,42 +1,47 @@
 ---
 title: "Authenticate to the API and the MCP server"
 sidebarTitle: "Authentication"
-description: "High-level summary of the ways to authenticate to the Judt API and MCP server."
+description: "Send an API key or an OAuth access token with each request to the Judt API and the Judt MCP server."
 ---
 
-Every request to the Judt REST API (`https://api.judt.ai/api`) and MCP server (`https://api.judt.ai/mcp`) requires an `Authorization` header.
+Send a credential in the `Authorization` header of each request to the Judt REST API (`https://api.judt.ai/api`) and the Judt MCP server (`https://api.judt.ai/mcp`).
 
-| Path | Who it's for | Scope | How it starts |
+| Path | Who uses it | Access scope | How to start |
 | --- | --- | --- | --- |
-| **API key** _(primary)_ | Scripts, CI, and agents | Organization-wide or a single App | Create a `judt_...` key in [API keys](https://judt.ai/api-keys) or mint a short-lived App token via `POST /api/tokens`. |
-| **Agent OAuth** | Coding agents and MCP clients | Organization-wide (`apps:read`, `apps:write`) | Kicked off automatically via MCP OAuth or by following [`https://judt.ai/auth.md`](https://judt.ai/auth.md) against the OAuth endpoints. |
+| **API key** _(primary)_ | Scripts, CI jobs, and agents | All Apps in one organization, or one App | Create a `judt_...` key on the [API keys](https://judt.ai/api-keys) page, or create a short-lived App token with `POST /api/tokens`. |
+| **Agent OAuth** | Coding agents and MCP clients | All Apps in one organization (`apps:read`, `apps:write`) | Connect an OAuth client to the MCP server, or follow [`https://judt.ai/auth.md`](https://judt.ai/auth.md). |
 
-## 1. API keys (primary)
+## API keys (primary)
 
-API keys are the primary way to authenticate scripts, CI jobs, and agents. An API key starts with `judt_` and is sent as a bearer token:
+An API key is the primary credential for scripts, CI jobs, and agents. Each API key starts with `judt_`. Send the key as a bearer token:
 
 ```http
 Authorization: Bearer judt_...
 ```
 
-- **Create in the dashboard**: Go to [API keys](https://judt.ai/api-keys) to create a key scoped to **All apps** in your organization or **one specific App**, with an optional expiration (`1 day` to `90 days`, or no expiration).
-- **Mint short-lived App tokens via the API**: An organization-wide API key can call `POST /api/tokens` to mint a short-lived (`60s`–`24h`) token scoped to a single App—ideal for handing an agent or customer session isolated access to one App. See [Give an agent access to a single App](/manage/guides/agent-access).
-- **Revoke anytime**: Revoke keys immediately from the [API keys](https://judt.ai/api-keys) page.
+- **Create a key in the dashboard**: On the [API keys](https://judt.ai/api-keys) page, click **Create key**. Select **All apps** or select **one App**, and set an expiration time (`1 day` to `90 days`, or `No expiration`). Copy the key. The dashboard shows the full key one time only.
+- **Create a short-lived App token with the API**: Use an organization-wide API key (`All apps`) to call `POST /api/tokens`. This endpoint creates a token for one App that expires after `60` to `86400` seconds (up to 24 hours). Give this token to an agent that must access only that App. See [Give an agent access to a single App](/manage/guides/agent-access).
+- **Revoke a key**: Click **Revoke** next to the key on the [API keys](https://judt.ai/api-keys) page. The key stops working immediately.
 
-## 2. Agent OAuth
+## Agent OAuth
 
-When an agent or MCP client authenticates with OAuth, you approve its access in your browser instead of copying a key. OAuth tokens act as you in the organization you select and carry `apps:read` and/or `apps:write` scopes.
+With OAuth, you approve an agent or MCP client in your browser. You do not copy a key. The access token acts as you in the organization that you select and uses the `apps:read` and `apps:write` scopes.
 
-There are two ways an agent kicks off OAuth:
+An agent can start OAuth in two ways:
 
-- **Via the MCP server**: Connect an OAuth-capable MCP client (Claude Code, Cursor, VS Code, claude.ai, ChatGPT) to `https://api.judt.ai/mcp` without an `Authorization` header. An unauthenticated request returns `401` with a `WWW-Authenticate` header pointing to the RFC 9728 protected resource metadata (`/.well-known/oauth-protected-resource/mcp`), and the client opens your browser to sign in. See [Connect to MCP](/connect-to-mcp).
-- **Via `auth.md` and the OAuth endpoints**: Standalone agents read [`https://judt.ai/auth.md`](https://judt.ai/auth.md) for step-by-step instructions. The agent discovers metadata at `https://judt.ai/.well-known/oauth-authorization-server`, registers dynamically (`POST /api/auth/oauth2/register`), starts the device authorization flow (`POST /api/auth/device/code`), and polls `POST /api/auth/oauth2/token` while you approve the code at `https://judt.ai/device`. Agents using the Personal Agent Protocol (Poppy) can also discover endpoints at `https://judt.ai/.well-known/poppy.json`.
+- **From the MCP server**: Connect an MCP client that supports OAuth (such as Claude Code, Cursor, VS Code, claude.ai, or ChatGPT) to `https://api.judt.ai/mcp` without an `Authorization` header. The server returns `401 Unauthorized` with the `resource_metadata` URL in the `WWW-Authenticate` header, and the client opens your browser so you can sign in and approve access. See [Connect to MCP](/connect-to-mcp).
+- **From `auth.md` and the OAuth endpoints**: Standalone agents follow the instructions at [`https://judt.ai/auth.md`](https://judt.ai/auth.md):
+  1. Read the server metadata at `https://judt.ai/.well-known/oauth-authorization-server` (or `https://judt.ai/.well-known/poppy.json` for the Personal Agent Protocol).
+  2. Register one time at `POST https://judt.ai/api/auth/oauth2/register`.
+  3. Request a device code and user code at `POST https://judt.ai/api/auth/device/code`.
+  4. Give the verification link (`https://judt.ai/device`) and the user code to the user.
+  5. Poll `POST https://judt.ai/api/auth/oauth2/token` until the user approves access, and use the same endpoint to refresh tokens.
 
-You can view and revoke connected OAuth clients at any time on the [Connected agents](https://judt.ai/connected-agents) page, or an agent can revoke its own token at `POST /api/auth/oauth2/revoke`.
+To disconnect an agent, go to [Connected agents](https://judt.ai/connected-agents) and click **Disconnect**. An agent can also revoke its own refresh token at `POST https://judt.ai/api/auth/oauth2/revoke`.
 
-## Roles and other tokens
+## Other details
 
-- **Organization roles**: Every API key and OAuth token inherits your role in the target organization. `owner` and `admin` can perform all actions (including creating/deleting Apps, managing Secrets, and deploying to production); `member` can read resources, edit sandbox files, run commands, commit, preview, and run agent turns, but receives `403 forbidden` on owner/admin actions.
-- **App access tokens (for viewing private Apps)**: To let an automated caller or browser open a `password` or `private` published App (`https://<slug>.judt.dev`), mint a 5-minute access token with `POST /api/apps/{id}/access` and pass it in `X-Judt-Access-Token` or `?access_token=`. See [Previews and access](/manage/concepts/previews).
+- **Organization roles**: Every API key and OAuth token acts as you in one organization and has your role (`owner`, `admin`, or `member`). An agent cannot do an action that your role does not allow.
+- **Tokens that open a private App**: To open a published App (`https://<slug>.judt.dev`) that uses `password` or `private` visibility without a browser sign-in, create a 5-minute access token with `POST /api/apps/{id}/access`. Send this token in the `X-Judt-Access-Token` header or the `access_token` URL parameter. See [Previews and access](/manage/concepts/previews).
 
-For general API conventions, OAuth scopes and lifetimes, DPoP key binding, and authentication error codes, see the [API reference](/api-reference/introduction).
+For OAuth scopes, token lifetimes, DPoP key binding, role permissions, and error codes, see the [API reference](/api-reference/introduction).
