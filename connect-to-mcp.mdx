@@ -144,11 +144,11 @@ We recommend in your system prompt of your agent, tell it use one pattern or the
 | **Files** | `list_files`, `read_file`, `write_file`, `delete_file` | List or search files in `/app`, and read, write, or delete individual files with `ETag` concurrency checks. |
 | **Sandbox** | `git_info`, `run_command`, `create_preview`, `stop_sandbox`, `create_commit`, `list_commits`, `restore_commit` | Check Git status/diff, run shell commands in `/app`, start a 5-minute dev server preview, commit changes, or restore an earlier commit. |
 | **Deployments** | `deploy`, `list_deployments`, `unpublish_app` | Build and publish a commit to production, inspect deployment status, or take an App offline. |
-| **Secrets** | `list_secrets`, `set_secret`, `delete_secret` | List Secret names, set a Secret value, or delete a Secret. |
+| **Secrets** | `list_secrets`, `request_secrets`, `generate_secret`, `delete_secret` | List Secret names, ask the user to set Secrets in the Judt dashboard, create a Secret with a random value, or delete a Secret. |
 | **Monitoring** | `list_events`, `list_logs` | Query platform events (`sandbox`, `deployment`, `deletion`) and runtime logs (`development`, `production`). |
 | **Templates** | `list_templates` | List starter templates for `create_app`. |
 | **Agent sessions** | `list_models`, `create_session`, `list_sessions`, `update_session`, `delete_session`, `create_turn`, `list_turns`, `cancel_turn`, `decline_input`, `list_session_events` | Drive the in-product Judt agent through sessions and turns. |
 
-<Warning>
-  Calling `set_secret` through an MCP client sends the Secret value through your model provider's context window. Set sensitive production Secrets in the Judt dashboard or directly via the REST API (`PUT /api/apps/{id}/secrets`). See [Secrets](/manage/secrets).
-</Warning>
+<Note>
+  No MCP tool takes a Secret value, so a value never goes through your model provider's context window. `request_secrets` returns a link to the App's Secrets page in the Judt dashboard, where the user types the values. See [Ask for Secrets from an MCP client](/manage/secrets#ask-for-secrets-from-an-mcp-client).
+</Note>
