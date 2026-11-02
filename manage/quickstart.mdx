@@ -55,7 +55,7 @@ Keep the key out of your shell history and out of your source files. Put the key
 read -rs JUDT_API_KEY && export JUDT_API_KEY
 ```
 
-The command waits for input. Paste the key, and then press **Enter**. The terminal does not print the key.
+The command waits for input. Paste the key, and then press **Enter**. Using `read` lets you avoid the key entering your terminal history.
 
 ## Send your first request
 
@@ -76,8 +76,6 @@ The response is similar to the following:
   "offset": 0
 }
 ```
-
-If the response has status `401`, then the key is incorrect, expired, or revoked. Make sure that the `JUDT_API_KEY` variable contains the full key.
 
 ## Create an App
 
@@ -120,11 +118,9 @@ Put the App ID in an environment variable:
 export APP_ID={APP_ID}
 ```
 
-Replace `APP_ID` with the value of the `id` field from the response.
-
 ## Change the code
 
-Each App has a sandbox that holds its source files and runs a dev server. The sandbox starts automatically when a request needs it, so the first request to a stopped sandbox takes a few extra seconds.
+Each App has a [development sandbox](/manage/concepts/sandbox) that holds its source files and runs a dev server. The sandbox starts automatically when a request needs it, so the first request to a stopped sandbox takes a few extra seconds.
 
 <Steps>
   <Step title="Read the entry file">
@@ -134,8 +130,6 @@ Each App has a sandbox that holds its source files and runs a dev server. The sa
     curl https://api.judt.ai/api/apps/$APP_ID/files/index.js \
       -H "Authorization: Bearer $JUDT_API_KEY"
     ```
-
-    The `content` field of the response contains the UTF-8 source code of the file.
   </Step>
   <Step title="Write the new code">
     Replace `index.js` with code that returns a new greeting:
@@ -199,10 +193,8 @@ The request builds the App, publishes the bundle, verifies that the runtime is s
 Send a request to the published App:
 
 ```bash
-curl APP_URL
+curl {APP_URL}
 ```
-
-Replace `APP_URL` with the `url` field from the App object (for example, `https://plucky-teal-tatooine.judt.dev`).
 
 The response is:
 
