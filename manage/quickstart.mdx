@@ -103,7 +103,7 @@ The response is similar to the following:
     "password_updated_at": null,
     "status": "unpublished",
     "deployment_id": null,
-    "failure_code": null,
+    "error": null,
     "observed_at": "2026-10-15T20:00:00.000Z"
   },
   ...
@@ -149,13 +149,13 @@ Each App has a [development sandbox](/manage/concepts/sandbox) that holds its so
       -H "Authorization: Bearer $JUDT_API_KEY"
     ```
 
-    Open the URL from the `url` field in a browser. The page shows `Hello from my first App.` The preview link expires after `expires_in` seconds (`300`, or 5 minutes).
+    Open the URL from the `url` field in a browser. The page shows `Hello from my first App.` The preview link expires after 5 minutes, at the time in the `expires_at` field.
   </Step>
 </Steps>
 
 ## Commit the change
 
-A commit records a snapshot of the App's source in Git and creates a durable backup. Deployments always publish a commit, not uncommitted files in the sandbox.
+A commit records a snapshot of the App's source in Git and creates a durable backup. If you deploy without a commit, the deployment commits any changes first.
 
 ```bash
 curl -X POST https://api.judt.ai/api/apps/$APP_ID/commits \
@@ -168,7 +168,7 @@ The `commit_sha` field in the response is the 40-character Git SHA of the new co
 
 ## Publish the App
 
-Publish the current `HEAD` commit of the sandbox to production:
+Publish the sandbox to production:
 
 ```bash
 curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
@@ -183,9 +183,9 @@ The request builds the App, publishes the bundle, verifies that the runtime is s
 {
   "id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
   "app_id": "app_8fK2mQ7xRtV3nW9pLc4ZbY1s",
-  "source_commit": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
-  "publication_status": "published",
-  "activation_status": "active",
+  "commit_id": "cmt_3xK9mQ2pRtV7nW4sLc8ZbY5j",
+  "commit_sha": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+  "status": "succeeded",
   ...
 }
 ```
@@ -231,7 +231,7 @@ Procedure:
 1. Find the App with GET /api/apps. If the task needs a new App, create it with POST /api/apps.
 2. Read the files before you change them. Use GET /api/apps/{id}/files and GET /api/apps/{id}/files/{path}.
 3. Write each changed file with PUT /api/apps/{id}/files/{path}.
-4. Test the change in the sandbox. Run commands with POST /api/apps/{id}/command. Get a preview URL with POST /api/apps/{id}/preview.
+4. Test the change in the sandbox. Run commands with POST /api/apps/{id}/commands. Get a preview URL with POST /api/apps/{id}/preview.
 5. Commit the change with POST /api/apps/{id}/commits. Write a one-line message that states what changed.
 6. Publish the commit with POST /api/apps/{id}/deployments only if the task tells you to publish.
 7. Tell me the App URL, the commit SHA, and the deployment status.

@@ -13,7 +13,7 @@ This guide shows how to publish changes from an App's sandbox to production, how
 
 ## Publish new changes to production
 
-Deployments always publish a committed snapshot of `/app`, never uncommitted sandbox files.
+A deployment always publishes a commit. If the sandbox files changed since the last commit, the deployment commits them first.
 
 <Steps>
   <Step title="Verify your changes on the sandbox dev server">
@@ -44,10 +44,10 @@ Deployments always publish a committed snapshot of `/app`, never uncommitted san
       -d '{"message": "Add /api/orders endpoint"}'
     ```
 
-    If no files changed since `HEAD`, the API returns `409 nothing_to_commit` and you can proceed directly to the next step.
+    This step lets you write your own commit message. If you skip it, the deployment commits any changes for you.
   </Step>
   <Step title="Deploy the commit">
-    Publish the sandbox's `HEAD` commit to production:
+    Publish the sandbox to production:
 
     ```bash
     curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
@@ -62,9 +62,9 @@ Deployments always publish a committed snapshot of `/app`, never uncommitted san
     ```json
     {
       "id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
-      "source_commit": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
-      "publication_status": "published",
-      "activation_status": "active",
+      "commit_id": "cmt_3xK9mQ2pRtV7nW4sLc8ZbY5j",
+      "commit_sha": "7b3c9e1d4a2f8056e1c9d0b4f2a6e8c1d3b5a7f9",
+      "status": "succeeded",
       ...
     }
     ```
@@ -84,21 +84,21 @@ Every commit in your App's history has a 40-character `commit_sha` and a `cmt_..
       -H "Authorization: Bearer $JUDT_API_KEY"
     ```
 
-    Find the target commit in `results` and copy its 40-character `commit_sha` (for example, `1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d`) and its `id` (`cmt_...`).
+    Find the target commit in `results` and copy its `id` (`cmt_...`).
   </Step>
   <Step title="Deploy the earlier commit to production">
-    Pass the 40-character `commit_sha` in the `commit` field of `POST /api/apps/{id}/deployments`:
+    Pass the commit's `cmt_...` ID in the `commit_id` field of `POST /api/apps/{id}/deployments`:
 
     ```bash
     curl -X POST https://api.judt.ai/api/apps/$APP_ID/deployments \
       -H "Authorization: Bearer $JUDT_API_KEY" \
       -H "Content-Type: application/json" \
       -d '{
-        "commit": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d"
+        "commit_id": "cmt_1xK4mQ9pRtV2nW8sLc5ZbY3j"
       }'
     ```
 
-    When the request returns with `publication_status: "published"` and `activation_status: "active"`, production is serving that earlier commit.
+    When the request returns with `status: "succeeded"`, production is serving that earlier commit.
   </Step>
   <Step title="Optional: Reset the sandbox working tree">
     Deploying an earlier commit changes production, but leaves the sandbox `/app` directory on its current commit. If you also want to reset `/app` in the sandbox to match that commit, call `POST /api/apps/{id}/restore` with the commit's `cmt_...` ID:

@@ -3,7 +3,7 @@ title: "Connect to MCP"
 description: "Connect your coding agent to the Judt MCP server with an API key or OAuth."
 ---
 
-The Judt MCP server exposes every Judt API operation as a native tool, so your agent can discover and call operations directly without parsing the OpenAPI specification. Use MCP whenever your agent or editor supports the Model Context Protocol.
+The Judt MCP server exposes the Judt API as native tools, so your agent can discover and call operations directly without parsing the OpenAPI specification. Use MCP whenever your agent or editor supports the Model Context Protocol.
 
 ## Get an API key
 
@@ -31,15 +31,15 @@ Create an API key in the Judt dashboard to authenticate your MCP client:
   </Step>
 </Steps>
 
-### Recommended: Use a short-lived, App-scoped token
+### Recommended: Use a short-lived, App-scoped key
 
 Unless your agent needs to create new Apps across your organization, select a single App in **App** and a short expiration (`1 day` or `7 days`) in **Expires** when creating the key:
 
 - The agent can read and modify only that App (`GET /api/apps` returns only that App, and requests to any other App return `404 not_found`).
 - The agent cannot create new Apps (`403 app_scoped_token`).
-- The token expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
+- The key expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
 
-If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](https://docs.judt.ai/api-reference/token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
+If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](/api-reference/tokens/create-an-app-token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
 
 ## Configure your MCP client
 
@@ -140,15 +140,18 @@ We recommend in your system prompt of your agent, tell it use one pattern or the
 
 | Group | Tools | What they do |
 | --- | --- | --- |
-| **Apps** | `list_apps`, `create_app`, `update_app`, `delete_app`, `create_access_token` | Create, inspect, rename, or delete Apps, change production visibility, and mint 5-minute access tokens. |
-| **Files** | `list_files`, `read_file`, `write_file`, `delete_file` | List or search files in `/app`, and read, write, or delete individual files with `ETag` concurrency checks. |
-| **Sandbox** | `git_info`, `run_command`, `create_preview`, `stop_sandbox`, `create_commit`, `list_commits`, `restore_commit` | Check Git status/diff, run shell commands in `/app`, start a 5-minute dev server preview, commit changes, or restore an earlier commit. |
+| **Account** | `get_me` | See who a credential acts for and what it can reach. |
+| **Apps** | `list_apps`, `create_app`, `update_app`, `delete_app`, `create_visitor_token` | Create, inspect, rename, or delete Apps, change production visibility, and create 5-minute visitor tokens. |
+| **Tokens** | `create_app_token` | Create a short-lived token that reaches only one App. |
+| **Files** | `list_files`, `read_file`, `write_file`, `edit_file`, `delete_file` | List or search files in `/app`, and read, write, edit, or delete individual files with `ETag` concurrency checks. |
+| **Sandbox** | `run_command`, `create_preview`, `create_commit`, `list_commits`, `restore_commit` | Run shell commands in `/app`, including Git, start a 5-minute dev server preview, commit changes, or restore an earlier commit. |
 | **Deployments** | `deploy`, `list_deployments`, `unpublish_app` | Build and publish a commit to production, inspect deployment status, or take an App offline. |
-| **Secrets** | `list_secrets`, `set_secret`, `delete_secret` | List Secret names, set a Secret value, or delete a Secret. |
+| **Secrets** | `list_secrets`, `request_secrets`, `generate_secret`, `delete_secret` | List Secret names, ask the user to set Secrets, create a Secret with a random value, or delete a Secret. |
 | **Monitoring** | `list_events`, `list_logs` | Query platform events (`sandbox`, `deployment`, `deletion`) and runtime logs (`development`, `production`). |
 | **Templates** | `list_templates` | List starter templates for `create_app`. |
 | **Agent sessions** | `list_models`, `create_session`, `list_sessions`, `update_session`, `delete_session`, `create_turn`, `list_turns`, `cancel_turn`, `decline_input`, `list_session_events` | Drive the in-product Judt agent through sessions and turns. |
+| **Feedback** | `send_feedback` | Tell the Judt team about bugs, friction, and anything else. |
 
-<Warning>
-  Calling `set_secret` through an MCP client sends the Secret value through your model provider's context window. Set sensitive production Secrets in the Judt dashboard or directly via the REST API (`PUT /api/apps/{id}/secrets`). See [Secrets](/manage/secrets).
-</Warning>
+<Note>
+  No MCP tool takes a Secret value, so a value does not pass through your model provider's context window. Set the value in the Judt dashboard or with the REST API (`PUT /api/apps/{id}/secrets/{name}`). See [Secrets](/manage/secrets).
+</Note>
