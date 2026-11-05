@@ -50,6 +50,12 @@
               "manage/concepts/previews",
               "logs"
             ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "manage/reference/mcp"
+            ]
           }
         ]
       },

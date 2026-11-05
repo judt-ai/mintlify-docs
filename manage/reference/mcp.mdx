@@ -1,0 +1,224 @@
+---
+title: "MCP server reference"
+sidebarTitle: "MCP server"
+description: "All tools on the Judt MCP server, the API operation each tool sends, and how arguments, results, and retries work."
+---
+This reference lists the tools on the Judt MCP server. Each tool sends a request to the [Judt API](/api-reference/introduction) as the caller, so the tool has the same permissions, validation, and errors as the API operation. To connect a client, see [Connect to MCP](/connect-to-mcp).
+
+## Server
+
+| Property | Value |
+| --- | --- |
+| URL | `https://api.judt.ai/mcp` |
+| Transport | Streamable HTTP |
+| Protocol revisions | `2026-07-28` and `2025-11-25` |
+| Server name | `judt` |
+| Authentication | An API key or an OAuth access token. See [Authentication settings](#authentication-settings). |
+| Server Card | `https://api.judt.ai/mcp/server-card` |
+
+## Authentication settings
+
+Each request to the MCP server must have a credential in the `Authorization` header. The server doesn't accept the session cookie of the Judt dashboard. For how to get each credential, see [Authentication](/manage/authentication).
+
+### API key
+
+| Setting | Value |
+| --- | --- |
+| Header | `Authorization: Bearer judt_...` |
+| Access | All Apps in one organization, or one App. An App-scoped key can't create Apps or tokens. |
+| Expiration | The window that you set when you create the key. A token from `create_app_token` works for up to 24 hours. |
+| Where to create | The [API keys](https://judt.ai/api-keys) page, or the `create_app_token` tool |
+
+### OAuth
+
+Use OAuth with a client that supports MCP authorization. Add the server URL with no `Authorization` header. The client opens a browser, you sign in, select an organization, and approve access.
+
+| Setting | Value |
+| --- | --- |
+| Resource | `https://api.judt.ai/mcp` |
+| Protected resource metadata | `https://api.judt.ai/.well-known/oauth-protected-resource/mcp` |
+| Authorization server (issuer) | `https://judt.ai` |
+| Authorization server metadata | `https://judt.ai/.well-known/oauth-authorization-server` |
+| Client registration | Client ID metadata document, or dynamic client registration |
+| Grant types | `authorization_code` (with PKCE), `refresh_token` |
+| Scopes | `apps:read`, `apps:write`, `offline_access` |
+| Access token lifetime | 1 hour |
+| Refresh token lifetime | 30 days |
+| Token types | `Bearer` and `DPoP` |
+| Access | All Apps in the organization that you select when you sign in. Your organization role applies. |
+
+The required scope depends on the API requests that a tool sends:
+
+- `apps:read`: tools that only read, such as `list_apps`, `read_file`, and `request_secrets`.
+- `apps:write`: all other tools.
+- `offline_access`: gives the client a refresh token, so you don't sign in again each hour.
+
+If a request has no credential or a credential that isn't valid, the server returns `401` with a `WWW-Authenticate` header. The header holds the `resource_metadata` URL and the scopes, so that an MCP client can find the authorization server and start OAuth.
+
+## Supported features
+
+The server is stateless. Each HTTP request stands alone, and the server doesn't issue an `Mcp-Session-Id`.
+
+| Feature | Supported | Notes |
+| --- | --- | --- |
+| Tools | Yes | 37 tools. See [Tools](#tools). |
+| Tool annotations | Yes | `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. |
+| Structured tool output | Yes | Each result holds `structuredContent` and the same JSON as text. |
+| Server instructions | Yes | The `initialize` result tells the model the usual order of tool calls and how to handle Secrets and retries. |
+| Progress notifications | Yes | Sent every 10 seconds during a long call, if the client sends a `progressToken`. |
+| URL elicitation | Yes, on `2026-07-28` | `request_secrets` asks the client to open the App's Secrets page. |
+| Server Card | Yes | `https://api.judt.ai/mcp/server-card`, and a copy at `https://judt.ai/.well-known/mcp/server-card.json` |
+| Resources | No | Read files with `list_files` and `read_file`. |
+| Prompts | No | |
+| Sampling | No | |
+| Completions | No | |
+| Logging | No | Read App logs with `list_logs`. |
+| Tool list change notifications | No | The tool list changes only when Judt releases a new version. To see new tools, reconnect the client. |
+
+## Tools
+
+The **Effect** column shows the tool's annotations. Many clients use them to decide when to ask you before a call.
+
+- **Read-only**: the tool changes nothing (`readOnlyHint`).
+- **Write**: the tool adds or changes data, but doesn't replace or remove data that exists.
+- **Destructive**: the tool can replace or remove data that exists (`destructiveHint`).
+
+| Tool | What it does | API operation | Effect |
+| --- | --- | --- | --- |
+| `list_apps` | Lists the organization's Apps. To get one App with the status of its sandbox and production, pass `app_id`. | `GET /api/apps`<br />`GET /api/apps/{id}` | Read-only |
+| `create_app` | Creates an App from a template and reserves its address. | `POST /api/apps` | Write |
+| `update_app` | Changes the App's name, slug, or production access. | `PATCH /api/apps/{id}` | Write |
+| `delete_app` | Deletes the App. The deleted App stays readable for 30 days. | `DELETE /api/apps/{id}` | Destructive |
+| `create_visitor_token` | Creates a visitor token that opens the published App for 5 minutes without its password or sign-in. | `POST /api/apps/{id}/visitor-tokens` | Write |
+| `create_app_token` | Creates an API token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Write |
+| `list_secrets` | Lists the App's Secrets by name. The result never includes values. | `GET /api/apps/{id}/secrets` | Read-only |
+| `request_secrets` | Asks the user to set Secrets on the App's Secrets page in the Judt dashboard, and returns which Secrets are set. | `GET /api/apps/{id}/secrets`<br />`GET /api/apps/{id}/secrets/{name}` | Read-only |
+| `generate_secret` | Creates a Secret with a random value: 32 bytes as base64url. If the Secret exists, returns `409 secret_exists`. | `PUT /api/apps/{id}/secrets/{name}` | Write |
+| `delete_secret` | Deletes a Secret. | `DELETE /api/apps/{id}/secrets/{name}` | Destructive |
+| `list_files` | Lists the App's source files. Filters by path, glob, text, or regular expression. | `GET /api/apps/{id}/files` | Read-only |
+| `read_file` | Reads a file, or a range of its lines. Returns a binary file as base64. | `GET /api/apps/{id}/files/{path}` | Read-only |
+| `write_file` | Creates or replaces a file, up to 1 MiB. | `PUT /api/apps/{id}/files/{path}` | Destructive |
+| `edit_file` | Replaces an exact string in a text file. | `GET /api/apps/{id}/files/{path}`<br />`PUT /api/apps/{id}/files/{path}` | Destructive |
+| `delete_file` | Deletes a file. | `DELETE /api/apps/{id}/files/{path}` | Destructive |
+| `run_command` | Runs a shell command in the App's sandbox and returns its output. | `POST /api/apps/{id}/commands` | Destructive |
+| `list_commits` | Lists the App's commits, newest first. | `GET /api/apps/{id}/commits` | Read-only |
+| `create_commit` | Commits the sandbox's changes and backs up the commit. | `POST /api/apps/{id}/commits` | Write |
+| `restore_commit` | Resets the sandbox's files to a commit. Production doesn't change. | `POST /api/apps/{id}/restore` | Destructive |
+| `create_preview` | Returns a short-lived URL to the sandbox's dev server. If the App doesn't build, returns `422 preview_failed`. | `POST /api/apps/{id}/preview` | Write |
+| `deploy` | Publishes the App to production and waits until the new version serves. | `POST /api/apps/{id}/deployments` | Write |
+| `list_deployments` | Lists the App's deployments. To get one deployment with its status and database migrations, pass `deployment_id`. | `GET /api/apps/{id}/deployments`<br />`GET /api/apps/{id}/deployments/{deployment_id}` | Read-only |
+| `unpublish_app` | Takes the App offline. The next deployment publishes the App again. | `POST /api/apps/{id}/unpublish` | Destructive |
+| `list_events` | Lists what happened to the App's sandbox, deployments, and deletion. | `GET /api/apps/{id}/events` | Read-only |
+| `list_logs` | Lists the App's log entries from production and the sandbox. | `GET /api/apps/{id}/logs` | Read-only |
+| `list_templates` | Lists the templates that `create_app` can use. | `GET /api/templates` | Read-only |
+| `send_feedback` | Sends feedback to the Judt team. | `POST /api/feedback` | Write |
+| `list_models` | Lists the models that the Judt agent can use. | `GET /api/models` | Read-only |
+| `create_session` | Creates a Judt agent session. If you include `message`, the first turn starts. | `POST /api/apps/{id}/sessions` | Write |
+| `list_sessions` | Lists the App's agent sessions. To get one session, pass `session_id`. | `GET /api/apps/{id}/sessions`<br />`GET /api/apps/{id}/sessions/{session_id}` | Read-only |
+| `update_session` | Renames a session or changes its default model. | `PATCH /api/apps/{id}/sessions/{session_id}` | Write |
+| `delete_session` | Deletes a session with its turns and events. | `DELETE /api/apps/{id}/sessions/{session_id}` | Destructive |
+| `create_turn` | Sends a message to the Judt agent. The turn starts, or waits in a queue behind the active turn. | `POST /api/apps/{id}/sessions/{session_id}/turns` | Write |
+| `list_turns` | Lists a session's turns. To get one turn with its input request, outcome, and token usage, pass `turn_id`. | `GET /api/apps/{id}/sessions/{session_id}/turns`<br />`GET /api/apps/{id}/sessions/{session_id}/turns/{turn_id}` | Read-only |
+| `cancel_turn` | Cancels a queued, running, or waiting turn. | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/cancel` | Destructive |
+| `decline_input` | Declines a turn's pending input request. The agent then continues. | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/decline` | Write |
+| `list_session_events` | Returns one page of a session's events, after `cursor`. | `GET /api/apps/{id}/sessions/{session_id}/events` | Read-only |
+
+Tool names are stable identifiers. Judt doesn't rename a tool.
+
+### API operations without a tool
+
+| API operation | Use instead |
+| --- | --- |
+| `GET /api/apps/{id}/git` | `run_command` with a Git command, such as `git status` or `git diff`. |
+| `POST /api/apps/{id}/stop` | No tool. The sandbox stops when it is idle. |
+
+## Arguments
+
+A tool's arguments are the path, query, and header parameters and the JSON body fields of its API operation. The input schema of each tool gives the full list, with the same descriptions as the [API reference](/api-reference/introduction). The names change in these cases:
+
+| API parameter | Tool argument |
+| --- | --- |
+| `{id}` in the path | `app_id` |
+| `Idempotency-Key` header | `idempotency_key` |
+| `If-Match` header | `if_match` |
+| `If-None-Match` header | `if_none_match` |
+
+Send an ETag in `if_match` or `if_none_match` without quotes, as `read_file` and `write_file` return it in `etag`.
+
+A list tool that has an optional ID argument also gets one item. For example, `list_deployments` with `deployment_id` returns that deployment with its details, and ignores the list arguments.
+
+## Results
+
+A successful call returns the API's JSON response as `structuredContent`, and the same JSON as text. If the response has an `ETag` header, the result also holds `etag`.
+
+A failed call has `isError: true`. The result holds the API's error, in the form `{"error": {"code": "...", "message": "..."}}`. For a tool that changes data, the result also holds the `idempotency_key` that the request used.
+
+## Retries and long calls
+
+Each tool that changes data takes an optional `idempotency_key`. If a call returns `504`, call the tool again with the same key. The retry returns the result of the first request, and doesn't do the work again. `create_visitor_token` and `create_preview` store nothing, so a retry makes a new token or URL.
+
+A call such as `deploy` or `run_command` can take a long time. If the client sends a `progressToken`, the server sends a progress notification every 10 seconds until the call returns.
+
+## Secrets
+
+No tool takes a Secret's value, so a value never goes through the conversation.
+
+- To get a value from the user, call `request_secrets`. While a Secret is missing, the result holds a `url` to the App's Secrets page in the Judt dashboard. If the client supports URL elicitation (revision `2026-07-28`), the client opens the page for the user. Otherwise, give the `url` to the user, and then call `request_secrets` again.
+- To make a value that no other service gives you, such as a session signing key, call `generate_secret`.
+
+See [Secrets](/manage/secrets).
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The client can't connect, or every call returns 401 unauthenticated">
+    - Make sure that the header is `Authorization: Bearer judt_...`, with no quotes around the key.
+    - Make sure that the key isn't expired or revoked on the [API keys](https://judt.ai/api-keys) page.
+    - The server doesn't accept the dashboard's session cookie. Use an API key or OAuth.
+    - Make sure that the URL is `https://api.judt.ai/mcp` and that the client uses the Streamable HTTP transport, not SSE or stdio.
+  </Accordion>
+  <Accordion title="The browser doesn't open for OAuth">
+    The client doesn't support MCP authorization, or the configuration has an `Authorization` header. Remove the header to use OAuth, or use an API key.
+  </Accordion>
+  <Accordion title="401 with invalid_token in WWW-Authenticate">
+    The OAuth access token is expired or revoked, or it was issued for a different resource. Refresh the token, or sign in again. If you get the token yourself, request the resource `https://api.judt.ai/mcp`.
+  </Accordion>
+  <Accordion title="403 insufficient_scope">
+    The OAuth token doesn't have `apps:write`. Disconnect the client, connect it again, and approve all the requested access.
+  </Accordion>
+  <Accordion title="403 forbidden">
+    Your organization role is `member`, and the tool needs `owner` or `admin`, for example to deploy or to change Secrets. Ask an `owner` or `admin` to do the action, or to change your role.
+  </Accordion>
+  <Accordion title="403 app_scoped_token, or 404 not_found for an App that exists">
+    The API key reaches only one App. It can't create Apps or tokens, and other Apps return `404`. Call `list_apps` to see the App that the key reaches. To work on all Apps, use an organization-wide key or OAuth.
+
+    With OAuth, the token reaches only the organization that you selected when you signed in. To use a different organization, sign in again.
+  </Accordion>
+  <Accordion title="403 api_token_required on create_app_token">
+    Only an organization-wide API key can create an App token. OAuth access tokens and App-scoped keys can't.
+  </Accordion>
+  <Accordion title="A call times out, or returns 504">
+    The work continues on the server. Call the tool again with the same `idempotency_key` to get the result of the first request. The `504` result holds the key that the request used.
+
+    If the client stops waiting before the server answers, increase the client's tool timeout. A deploy can take up to 9 minutes. The server sends progress notifications every 10 seconds, so that clients that reset their timeout on progress keep waiting.
+  </Accordion>
+  <Accordion title="create_preview returns 422 preview_failed">
+    The dev server can't build or start the App. Read `detail` in the result for the build output, fix the code, and call `create_preview` again. To see more, call `list_logs` with `environment` set to `development`.
+  </Accordion>
+  <Accordion title="write_file, edit_file, or delete_file returns 412">
+    The file changed after you read it. Read the file again, and then make the change again with the new `etag`.
+  </Accordion>
+  <Accordion title="edit_file returns old_string_not_found or old_string_not_unique">
+    - `old_string_not_found`: `old_string` isn't in the file. Read the file, and copy the text exactly, with its whitespace and line breaks.
+    - `old_string_not_unique`: `old_string` is in the file more than one time. Add more of the text around it, or set `replace_all` to `true`.
+  </Accordion>
+  <Accordion title="request_secrets returns a url, but no page opens">
+    The client doesn't support URL elicitation. Give the `url` to the user. After the user sets the Secrets, call `request_secrets` again to make sure that each one is `provided`.
+  </Accordion>
+  <Accordion title="A tool is missing from the client">
+    The client keeps the tool list from when it connected. Reconnect the client to load the current list. Some clients also let you turn off tools one at a time; make sure that the tool is on.
+  </Accordion>
+  <Accordion title="Something else is wrong">
+    Call `send_feedback` with `type` set to `bug`, and say what you tried and what happened. Include the `request_id` from the error, if there is one.
+  </Accordion>
+</AccordionGroup>
