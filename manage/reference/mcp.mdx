@@ -25,7 +25,7 @@ Each request to the MCP server must have a credential in the `Authorization` hea
 | Setting | Value |
 | --- | --- |
 | Header | `Authorization: Bearer judt_...` |
-| Access | All Apps in one organization, or one App. An App-scoped key can't create Apps or tokens. |
+| Access | All Apps in one organization, or one App. An App token can't create Apps or tokens. |
 | Expiration | The window that you set when you create the key. A token from `create_app_token` works for up to 24 hours. |
 | Where to create | The [API keys](https://judt.ai/api-keys) page, or the `create_app_token` tool |
 
@@ -61,7 +61,7 @@ The server is stateless. Each HTTP request stands alone, and the server doesn't 
 
 | Feature | Supported | Notes |
 | --- | --- | --- |
-| Tools | Yes | 37 tools. See [Tools](#tools). |
+| Tools | Yes | 38 tools. See [Tools](#tools). |
 | Tool annotations | Yes | `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. |
 | Structured tool output | Yes | Each result holds `structuredContent` and the same JSON as text. |
 | Server instructions | Yes | The `initialize` result tells the model the usual order of tool calls and how to handle Secrets and retries. |
@@ -85,12 +85,13 @@ The **Effect** column shows the tool's annotations. Many clients use them to dec
 
 | Tool | What it does | API operation | Effect |
 | --- | --- | --- | --- |
+| `get_me` | Returns the person, the organization, the role, and whether the credential reaches one App or all Apps. | `GET /api/me` | Read-only |
 | `list_apps` | Lists the organization's Apps. To get one App with the status of its sandbox and production, pass `app_id`. | `GET /api/apps`<br />`GET /api/apps/{id}` | Read-only |
 | `create_app` | Creates an App from a template and reserves its address. | `POST /api/apps` | Write |
 | `update_app` | Changes the App's name, slug, or production access. | `PATCH /api/apps/{id}` | Write |
 | `delete_app` | Deletes the App. The deleted App stays readable for 30 days. | `DELETE /api/apps/{id}` | Destructive |
 | `create_visitor_token` | Creates a visitor token that opens the published App for 5 minutes without its password or sign-in. | `POST /api/apps/{id}/visitor-tokens` | Write |
-| `create_app_token` | Creates an API token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Write |
+| `create_app_token` | Creates an App token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Write |
 | `list_secrets` | Lists the App's Secrets by name. The result never includes values. | `GET /api/apps/{id}/secrets` | Read-only |
 | `request_secrets` | Asks the user to set Secrets on the App's Secrets page in the Judt dashboard, and returns which Secrets are set. | `GET /api/apps/{id}/secrets`<br />`GET /api/apps/{id}/secrets/{name}` | Read-only |
 | `generate_secret` | Creates a Secret with a random value: 32 bytes as base64url. If the Secret exists, returns `409 secret_exists`. | `PUT /api/apps/{id}/secrets/{name}` | Write |
@@ -195,7 +196,7 @@ See [Secrets](/manage/secrets).
     With OAuth, the token reaches only the organization that you selected when you signed in. To use a different organization, sign in again.
   </Accordion>
   <Accordion title="403 api_token_required on create_app_token">
-    Only an organization-wide API key can create an App token. OAuth access tokens and App-scoped keys can't.
+    Only an organization-wide API key can create an App token. OAuth access tokens and App tokens can't.
   </Accordion>
   <Accordion title="A call times out, or returns 504">
     The work continues on the server. Call the tool again with the same `idempotency_key` to get the result of the first request. The `504` result holds the key that the request used.

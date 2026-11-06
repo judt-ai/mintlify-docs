@@ -31,7 +31,6 @@ An API key gives access to the Judt API. The key acts as you in one organization
     Set the following fields:
 
     - **Name**: a name for where you use the key, such as `Laptop CLI`.
-    - **App**: select **All apps**. A key for all Apps can create new Apps. A key scoped to one App cannot create Apps.
     - **Expires**: select when the key stops working.
 
     Click **Create key**.
@@ -71,9 +70,8 @@ The response is similar to the following:
 ```json
 {
   "results": [],
-  "total": 0,
-  "limit": 50,
-  "offset": 0
+  "has_more": false,
+  "next_cursor": null
 }
 ```
 
@@ -203,14 +201,14 @@ Hello from my first App.
 ```
 
 <Note>
-  If a write request returns status `503` or `504`, the operation may still finish on the server. Send an `Idempotency-Key` header with your write requests so you can safely retry with the same key. See [Sandboxes, retries, and time limits](/api-reference/introduction#sandboxes-retries-and-time-limits).
+  If a write request returns status `503` or `504`, the operation may still finish on the server. Each response to a write request has an `Idempotency-Key` header. To get the result, retry with that key. See [Sandboxes, retries, and time limits](/api-reference/introduction#sandboxes-retries-and-time-limits).
 </Note>
 
 ## Give the work to an agent
 
 A coding agent can run these same API calls for you when it has a shell and the `JUDT_API_KEY` environment variable.
 
-To restrict the agent to a single App, create an App-scoped API key on the **API keys** page. See [Give an agent access to an App](/manage/guides/agent-access).
+To restrict the agent to a single App, create an App token with `POST /api/tokens`. See [Give an agent access to an App](/manage/guides/agent-access).
 
 Copy the following prompt to your agent. Replace `TASK` with what you want the agent to build, such as `Add an endpoint at /time that returns the current UTC time as JSON, and publish the App.`
 

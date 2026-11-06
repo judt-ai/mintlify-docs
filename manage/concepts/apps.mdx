@@ -1,5 +1,6 @@
 ---
 title: "Apps"
+description: "What an App contains, how its address works, and the states of its sandbox and production."
 ---
 
 An App is a full-stack web application. Each App has its own source repository, development sandbox, secrets, runtime storage (D1, Durable Objects, KV, R2), and production deployment. Apps contain within them all the infrastructure they need, except for secrets. 
@@ -82,7 +83,7 @@ Every App has a `slug` that determines its `.judt.dev` address:
 https://<slug>.judt.dev
 ```
 
-If you do not pass a `slug` when you create an App, Judt generates a three-word slug such as `teal-plucky-tatooine`.
+If you do not pass a `slug` when you create an App, Judt generates a three-word slug such as `plucky-teal-tatooine`.
 
 ### Slug rules
 

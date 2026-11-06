@@ -71,7 +71,7 @@ When you create a deployment, Judt executes these steps in order:
 1. **Export the commit**: Reads the commit snapshot from Git and verifies source limits (up to `2,048` files and folders, `32 MiB` total uncompressed size, and `1 MiB` per file).
 2. **Validate `wrangler.json`**: Checks the App configuration and storage bindings. See [The App contract](/build/app-contract) and [Configure wrangler.json](/build/wrangler-json).
 3. **Run `before` migrations**: If the App has existing D1 databases with pending schema migrations, applies them before the new code goes live.
-4. **Install dependencies and build**: If `package.json` exists, runs `npm ci --ignore-scripts` (or `npm install --ignore-scripts`) and `npm run build` (when a `build` script is defined) inside an isolated build container. Secrets are not exposed during the build step. See [npm packages and builds](/build/npm-and-builds).
+4. **Install dependencies and build**: If `package.json` declares dependencies, requires a `package-lock.json` file (`422 lockfile_missing`) and runs `npm ci --ignore-scripts`. Then runs `npm run build` (when a `build` script is defined) inside an isolated build container. Secrets are not exposed during the build step. See [npm packages and builds](/build/npm-and-builds).
 5. **Inject Secrets and publish**: Injects the App's current Secrets into the deployed `vars` configuration and publishes the bundle to the production runtime.
 6. **Verify activation**: Probes the production runtime to confirm the new deployment starts cleanly.
 7. **Run `after` migrations**: Applies initial D1 migrations for any newly created D1 databases.
