@@ -1,0 +1,100 @@
+---
+title: "Use the Judt CLI"
+sidebarTitle: "Use the CLI"
+description: "Install the Judt CLI, sign in, and manage Apps from a shell, a CI job, or an agent."
+---
+
+The Judt CLI manages Apps from the command line. Each command is one call to the [Judt API](/api-reference/introduction), and its help names that call. Use the CLI when you have a shell but no MCP client.
+
+## Install the CLI
+
+To run the latest version with no install, use `npx judt`. To install the CLI, use one of these commands:
+
+| Method | Command |
+| --- | --- |
+| npm (any OS) | `npm install -g judt` |
+| Script (macOS, Linux) | `curl -fsSL https://judt.ai/install \| sh` |
+| Go | `go install github.com/judt-ai/cli/cmd/judt@latest` |
+
+All methods install the same binary. To see how to update your copy, run `judt upgrade`.
+
+## Sign in
+
+Use one of these methods:
+
+```bash
+judt auth login                  # Opens your browser
+judt auth login --device         # Gives a code to enter on another device
+judt auth login --with-token < key-file
+```
+
+For CI jobs and agents, set `JUDT_API_KEY`. This variable has priority over a saved sign-in:
+
+```bash
+read -rs JUDT_API_KEY && export JUDT_API_KEY
+```
+
+To check your sign-in, run `judt whoami`. To learn which credential to use, see [Authentication](/manage/authentication).
+
+## Manage an App
+
+Commands under `judt apps` act on one App. To set the App for a directory, run `judt apps use`. The CLI saves the App in `.judt.json`. `judt apps create` saves the new App in the same way. To set the App for one command, use `--app`.
+
+```bash
+judt apps create --name "Acme hiring"
+judt apps files write src/index.ts --content @src/index.ts
+judt apps run "npm test"
+judt apps preview
+judt apps commit "Add the pricing page"
+judt apps deploy
+judt apps logs --level error
+```
+
+To set a Secret, send the value on stdin, so that it is not in your shell history:
+
+```bash
+pbpaste | judt apps secrets set STRIPE_SECRET_KEY
+```
+
+To call an API operation directly, use `judt api`:
+
+```bash
+judt api GET /api/apps
+```
+
+All groups and commands have `--help`. The help tells what the command does, which App it acts on, its flags, and the API call that it makes.
+
+## Use the CLI in a script
+
+- Add `--json` to get the JSON response of the API.
+- Lists return one page. Add `--all` to get all pages, or `--cursor` with the `next_cursor` of the previous page.
+- Text flags take `@path` to read a file and `-` to read stdin.
+- If a write fails with `503` or `504`, stderr shows an `--idempotency-key` value. Run the same command again with that flag to get the result of the first run. Without the flag, the work runs again.
+
+The exit code tells you the result. `judt apps run` exits with the exit code of your command.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The command succeeded. |
+| `1` | The API refused the request, or the request failed. On an error, stderr shows `code: message`. |
+| `2` | The command was not used correctly. |
+| `4` | You are not signed in, or you do not have permission. |
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `JUDT_API_KEY` | The API key to use in place of the saved sign-in. |
+| `JUDT_APP` | The App to act on. |
+| `JUDT_PROFILE` | The saved sign-in to use. You can also use `--profile`. |
+| `JUDT_API_URL` | Another API, such as staging. |
+| `JUDT_CONFIG_DIR` | The directory for sign-ins and settings. The default is `~/.config/judt`. |
+| `JUDT_NO_KEYRING` | Stores sign-ins in a file, not in the OS keychain. |
+| `JUDT_NO_UPDATE_CHECK` | Stops the check for new versions. |
+| `JUDT_NO_MODIFY_PATH` | Stops the install script from changing your shell's startup file. |
+
+## Next steps
+
+- See all API operations in the [API reference](/api-reference/introduction).
+- Connect an MCP client in [Connect to MCP](/connect-to-mcp).
+- Limit an agent to one App in [Give an agent access to a single App](/manage/guides/agent-access).

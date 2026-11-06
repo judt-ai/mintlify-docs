@@ -39,6 +39,7 @@
               "manage/guides/agent-access",
               "manage/guides/troubleshoot",
               "connect-to-mcp",
+              "manage/guides/cli",
               "platform-integrations"
             ]
           },
@@ -47,8 +48,7 @@
             "pages": [
               "manage/secrets",
               "manage/guides/publish",
-              "manage/concepts/previews",
-              "logs"
+              "manage/concepts/previews"
             ]
           },
           {
@@ -264,5 +264,11 @@
       "view"
     ],
     "display": "toc"
-  }
+  },
+  "redirects": [
+    {
+      "source": "/logs",
+      "destination": "/manage/guides/troubleshoot"
+    }
+  ]
 }
