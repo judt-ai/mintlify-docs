@@ -12,6 +12,10 @@
   ],
   "tags": [
     {
+      "name": "Account",
+      "description": "See who a credential acts for: the person, the organization, and what the credential can reach."
+    },
+    {
       "name": "Apps",
       "description": "Create, update, and delete Apps, and control who can reach them."
     },
@@ -53,10 +57,55 @@
     }
   ],
   "paths": {
+    "/api/me": {
+      "get": {
+        "summary": "Get the caller",
+        "description": "Returns who the request acts as: the person, the organization that the credential reaches, the person's role in it, and the credential itself. Use it to check a credential, or to find out whether it reaches one App or all of them.",
+        "tags": [
+          "Account"
+        ],
+        "operationId": "get_me",
+        "security": [
+          {
+            "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:read"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The person, organization, role, and credential.",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/apps": {
       "post": {
         "summary": "Create an App",
-        "description": "Creates an App and reserves its address. The App's sandbox doesn't start, and nothing is published, until you use them.",
+        "description": "Creates an App and reserves its address. The App's sandbox doesn't start, and nothing is published, until you use them. During the beta an organization can have 10 Apps.",
         "tags": [
           "Apps"
         ],
@@ -181,7 +230,14 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
-            "$ref": "#/components/responses/Error"
+            "description": "- `app_scoped_token`: the request used an App-scoped token, which can't create Apps.\n- `app_limit_reached`: the organization has 10 Apps, the beta limit. Delete one, or send feedback to ask for more.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/Error"
@@ -1014,7 +1070,7 @@
       },
       "put": {
         "summary": "Set a Secret",
-        "description": "Creates the Secret with this name, or replaces its value. The App gets the value the next time its sandbox starts or it's deployed.\n\nIf a waiting agent turn requested this Secret, and it's the last one that the turn needs, the turn resumes.",
+        "description": "Creates the Secret with this name, or replaces its value. A running sandbox's dev server gets the new value at once, and production gets it at the next deploy.\n\nIf a waiting agent turn requested this Secret, and it's the last one that the turn needs, the turn resumes.",
         "tags": [
           "Secrets"
         ],
@@ -1115,7 +1171,7 @@
       },
       "delete": {
         "summary": "Delete a Secret",
-        "description": "Deletes the Secret and its stored value.",
+        "description": "Deletes the Secret and its stored value. A running sandbox's dev server stops getting it at once, and production at the next deploy.",
         "tags": [
           "Secrets"
         ],
@@ -1820,7 +1876,7 @@
     "/api/apps/{id}/commands": {
       "post": {
         "summary": "Run a command",
-        "description": "Runs a shell command in the App's sandbox and returns its output after it finishes or times out.\n\nTo retry safely, send the same `Idempotency-Key`. A retry returns the first run's result instead of running the command again.",
+        "description": "Runs a shell command in the App's sandbox and returns its output after it finishes or times out. The command doesn't get the App's Secrets, and its output shows any Secret value as `[secret:NAME]`.\n\nTo retry safely, send the same `Idempotency-Key`. A retry returns the first run's result instead of running the command again.",
         "tags": [
           "Sandbox"
         ],
@@ -3845,7 +3901,7 @@
             }
           },
           "429": {
-            "description": "- `agent_limit`: the organization has reached its limit of active turns.",
+            "description": "- `agent_limit`: the organization has reached its limit of running turns. Turns waiting for input do not count.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4410,7 +4466,7 @@
             }
           },
           "429": {
-            "description": "- `agent_limit`: the organization has reached its limit of active turns.",
+            "description": "- `agent_limit`: the organization has reached its limit of running turns. Turns waiting for input do not count.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7110,6 +7166,148 @@
           "type",
           "message",
           "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The person's ID."
+              },
+              "name": {
+                "type": "string",
+                "description": "The person's name."
+              },
+              "email": {
+                "type": "string",
+                "description": "The person's email address."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "email"
+            ],
+            "additionalProperties": false,
+            "description": "The person the credential acts for. An API token acts for the person who created it."
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The organization's ID."
+              },
+              "name": {
+                "type": "string",
+                "description": "The organization's name."
+              },
+              "slug": {
+                "type": "string",
+                "description": "The organization's slug."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "slug"
+            ],
+            "additionalProperties": false,
+            "description": "The organization that the credential reaches."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ],
+            "description": "The person's role in the organization. Only an `owner` or `admin` can create, delete, publish, or unpublish Apps, or change their production settings."
+          },
+          "credential": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "api_token",
+                  "oauth",
+                  "session"
+                ],
+                "description": "How the request authenticated: an API token, an OAuth access token, or a dashboard session."
+              },
+              "id": {
+                "description": "The API token's ID, which starts with `tok_`. `null` for other credentials.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "app_id": {
+                "description": "The ID of the one App that an App-scoped API token reaches. `null` if the credential reaches every App in the organization.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_id": {
+                "description": "The OAuth client's ID. `null` for other credentials.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scopes": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The OAuth access token's scopes. `null` for other credentials, which aren't limited by scope."
+              },
+              "expires_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-10-03T14:01:30.000Z"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "When the API token expires. `null` if it doesn't expire, or for other credentials."
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "app_id",
+              "client_id",
+              "scopes",
+              "expires_at"
+            ],
+            "additionalProperties": false,
+            "description": "The credential that the request sent."
+          }
+        },
+        "required": [
+          "user",
+          "organization",
+          "role",
+          "credential"
         ],
         "additionalProperties": false
       },

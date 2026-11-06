@@ -18,7 +18,7 @@ curl "https://api.judt.ai/api/apps/$APP_ID/events?kind=error,blocked&limit=20" \
   -H "Authorization: Bearer $JUDT_API_KEY"
 ```
 
-Each item in `results` is an `AppEvent` (`evt_...`):
+Each item in `results` is an `Event` (`evt_...`):
 
 ```json
 {
@@ -28,18 +28,15 @@ Each item in `results` is an `AppEvent` (`evt_...`):
   "kind": "error",
   "subject": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
   "code": "build_failed",
-  "summary": "npm run build exited with code 1",
-  "detail": {
-    "exit_code": 1,
-    "output": "src/index.ts(14,5): error TS2322: Type 'number' is not assignable to type 'string'."
-  },
+  "message": "npm run build exited with code 1",
+  "detail": "src/index.ts(14,5): error TS2322: Type 'number' is not assignable to type 'string'.",
   "created_at": "2026-10-15T20:40:00.000Z"
 }
 ```
 
 ### Filter App events
 
-You can pass comma-separated values to `category`, `kind`, and `subject`:
+You can pass comma-separated values to `category` and `kind`. `subject` returns events whose subject contains the text:
 
 | Query parameter | Allowed values | Description |
 | --- | --- | --- |
@@ -57,21 +54,27 @@ curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=production&level=war
   -H "Authorization: Bearer $JUDT_API_KEY"
 ```
 
-Each item in `results` is a `LogEntry`:
+Each item in `results` is a `Log`:
 
 ```json
 {
-  "timestamp": "2026-10-15T20:42:11.304Z",
+  "id": "LOG_ID",
+  "created_at": "2026-10-15T20:42:11.304Z",
   "environment": "production",
   "source": "app",
   "level": "error",
   "event": "exception",
   "message": "TypeError: Cannot read properties of undefined (reading 'id')",
-  "deployment_id": "dep_4hN8vX2kPq6TmR1wLs9CdF3j",
+  "request": {
+    "method": "GET",
+    "path": "/api/items",
+    "host": "customer-portal.judt.dev",
+    "status": 500,
+    "duration_ms": 12
+  },
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "data": {
-    "name": "TypeError",
-    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at Object.fetch (index.js:18:22)"
+  "attributes": {
+    "error.type": "TypeError"
   }
 }
 ```
@@ -83,17 +86,16 @@ Each item in `results` is a `LogEntry`:
 | `environment` | `development`, `production` | Filter to the sandbox dev server (`development`) or the published App (`production`). |
 | `source` | `request`, `app`, `dev_server`, `runtime`, `deployment`, `platform` | Component that emitted the log entry (comma-separated). |
 | `level` | `debug`, `info`, `warn`, `error` | Log severity (comma-separated, such as `level=warn,error`). |
-| `event` | String (comma-separated) | Specific structured event name (see table below). |
-| `search` | String (`1` to `200` chars) | Case-insensitive substring match against `message`. |
-| `deployment_id` | `dep_...` | Filter logs to a specific deployment. |
+| `message` | String (`1` to `200` chars) | Case-insensitive substring match against `message`. |
 | `trace_id` | 32-char lowercase hex | Return every log entry (`request`, `console.*`, `exception`) emitted during a single HTTP request. |
-| `since`, `until` | ISO 8601 timestamp | Time window bounds. Defaults to the last **24 hours** when `since` is omitted. |
+| `since`, `until` | ISO 8601 timestamp | Time window bounds. |
+| `sort` | `-created_at` (default), `created_at` | Order entries newest-first or oldest-first. |
 
 ### Log sources and notable `event` names
 
 | `source` | What it records | Notable `event` values |
 | --- | --- | --- |
-| `request` | Every incoming HTTP request handled by your Worker (`method`, `path`, `status`, `duration_ms` in `data`). | — |
+| `request` | Every incoming HTTP request handled by your Worker (`method`, `path`, `status`, `duration_ms` in `request`). | — |
 | `app` | Your Worker's `console.log`, `console.warn`, `console.error`, and uncaught exceptions. | `exception` (uncaught error in a handler) |
 | `dev_server` | Sandbox `celld dev` bundler and hot-reload output. | `dev.build_failed`, `dev.exited` |
 | `deployment` | Build and migration output during `POST /api/apps/{id}/deployments`. | `deployment.failed` |
@@ -112,7 +114,7 @@ Each item in `results` is a `LogEntry`:
 2. Copy the `trace_id` from the failing log entry.
 3. Fetch every log line from that request in chronological order:
    ```bash
-   curl "https://api.judt.ai/api/apps/$APP_ID/logs?trace_id=TRACE_ID&sort=timestamp" \
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?trace_id=TRACE_ID&sort=created_at" \
      -H "Authorization: Bearer $JUDT_API_KEY"
    ```
    Replace `TRACE_ID` with the 32-character hex `trace_id`.
@@ -122,15 +124,15 @@ Each item in `results` is a `LogEntry`:
 The sandbox dev server (`celld dev`) could not bundle or start your entry module:
 
 1. Read `error.detail` in the `422` response body for the compiler output.
-2. You can also query dev server build failures directly:
+2. You can also list the dev server's log entries. A failed build has `event` set to `dev.build_failed`:
    ```bash
-   curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=development&source=dev_server&event=dev.build_failed" \
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?environment=development&source=dev_server" \
      -H "Authorization: Bearer $JUDT_API_KEY"
    ```
 
 ### 3. `POST /api/apps/{id}/deployments` fails
 
-1. Inspect `failure_code` and `failure_message` on the returned `Deployment` object (`GET /api/apps/{id}/deployments/{deployment_id}`).
+1. Read the error in the response. For a deployment that started, inspect `error.code` and `error.message` on the `Deployment` object (`GET /api/apps/{id}/deployments/{deployment_id}`).
 2. Query the events for that deployment ID to see the exact build or migration output:
    ```bash
    curl "https://api.judt.ai/api/apps/$APP_ID/events?subject=$DEPLOYMENT_ID" \
@@ -138,13 +140,13 @@ The sandbox dev server (`celld dev`) could not bundle or start your entry module
    ```
 3. Check the deployment logs:
    ```bash
-   curl "https://api.judt.ai/api/apps/$APP_ID/logs?deployment_id=$DEPLOYMENT_ID&sort=timestamp" \
+   curl "https://api.judt.ai/api/apps/$APP_ID/logs?source=deployment" \
      -H "Authorization: Bearer $JUDT_API_KEY"
    ```
 
 ### 4. A Secret change is not visible in the App
 
-- **In the sandbox**: Changes to Secrets take effect on the next sandbox start. Call `POST /api/apps/{id}/stop` to stop the sandbox, and then send your next preview or command request.
+- **In the sandbox**: The dev server of a running sandbox gets a changed Secret at once. Commands do not get Secrets, so read the Secret from the App's code on the dev server.
 - **In production**: Changes to Secrets take effect on the next deployment. Call `POST /api/apps/{id}/deployments` to publish a new deployment with the updated Secret values.
 
 ## Next steps
