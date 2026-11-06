@@ -66,7 +66,7 @@ The server is stateless. Each HTTP request stands alone, and the server doesn't 
 | Structured tool output | Yes | Each result holds `structuredContent` and the same JSON as text. |
 | Server instructions | Yes | The `initialize` result tells the model the usual order of tool calls and how to handle Secrets and retries. |
 | Progress notifications | Yes | Sent every 10 seconds during a long call, if the client sends a `progressToken`. |
-| URL elicitation | Yes, on `2026-07-28` | `request_secrets` asks the client to open the App's Secrets page. |
+| URL elicitation | Yes, on `2026-07-28` | `request_secrets` and `create_deep_link` ask the client to open a page in the Judt dashboard. |
 | Server Card | Yes | `https://api.judt.ai/mcp/server-card`, and a copy at `https://judt.ai/.well-known/mcp/server-card.json` |
 | Resources | No | Read files with `list_files` and `read_file`. |
 | Prompts | No | |
@@ -91,6 +91,7 @@ The **Effect** column shows the tool's annotations. Many clients use them to dec
 | `update_app` | Changes the App's name, slug, or production access. | `PATCH /api/apps/{id}` | Destructive |
 | `delete_app` | Deletes the App. The deleted App stays readable for 30 days. | `DELETE /api/apps/{id}` | Destructive |
 | `create_visitor_token` | Creates a visitor token that opens the published App for 5 minutes without its password or sign-in. | `POST /api/apps/{id}/visitor-tokens` | Write |
+| `create_deep_link` | Creates a link to a page of the App in the Judt dashboard, for a person to open. The link grants no access and stops working after 24 hours. | `POST /api/apps/{id}/deep-links` | Write |
 | `create_app_token` | Creates an App token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Destructive |
 | `list_secrets` | Lists the App's Secrets by name. The result never includes values. | `GET /api/apps/{id}/secrets` | Read-only |
 | `request_secrets` | Asks the user to set Secrets on the App's Secrets page in the Judt dashboard, and returns which Secrets are set. | `GET /api/apps/{id}/secrets`<br />`GET /api/apps/{id}/secrets/{name}` | Read-only |
@@ -147,7 +148,7 @@ A failed call has `isError: true`. The result holds the API's error, in the form
 
 ## Retries and long calls
 
-Each tool that changes data takes an optional `idempotency_key`. If a call returns `504`, call the tool again with the same key. The retry returns the result of the first request, and doesn't do the work again. `create_visitor_token` and `create_preview` store nothing, so a retry makes a new token or URL.
+Each tool that changes data takes an optional `idempotency_key`. If a call returns `504`, call the tool again with the same key. The retry returns the result of the first request, and doesn't do the work again. `create_visitor_token`, `create_deep_link`, and `create_preview` store nothing, so a retry makes a new token or URL.
 
 A call such as `deploy` or `run_command` can take a long time. If the client sends a `progressToken`, the server sends a progress notification every 10 seconds until the call returns.
 

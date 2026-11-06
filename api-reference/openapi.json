@@ -762,6 +762,134 @@
         }
       }
     },
+    "/api/apps/{id}/deep-links": {
+      "post": {
+        "summary": "Create a deep link",
+        "description": "Creates a link to a page of the App in the Judt dashboard, for a person to open. The person signs in as usual, and needs to be a member of the App's organization. The link grants no access, and it stops working after 24 hours.\n\nWith `page` set to `secrets` and a list of `secrets`, the page has a field for each named Secret, and the values never reach the caller. To see that a Secret was set, get it by name: the request returns `404` until then. Any member can create the link, and setting a Secret needs the owner or admin role.\n\nA published App needs no deep link: its own URL signs a member in when the App is private.",
+        "tags": [
+          "Apps"
+        ],
+        "operationId": "create_deep_link",
+        "security": [
+          {
+            "ApiToken": []
+          },
+          {
+            "OAuth": [
+              "apps:write"
+            ]
+          },
+          {
+            "DPoP": [
+              "apps:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A unique ID that starts with `app_`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^app_[0-9A-Za-z]{24}$",
+              "example": "app_Zj7XhMgplmTJcp5Dk4vcYuk0"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key for this request, up to 200 printable characters. The request stores nothing, so a retry makes a new one whatever the key; the API returns the key in the `Idempotency-Key` response header.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "description": "The page to open. Without it, the link opens the App's usual first page.",
+                    "type": "string",
+                    "enum": [
+                      "secrets",
+                      "access",
+                      "deploys",
+                      "logs",
+                      "preview"
+                    ]
+                  },
+                  "secrets": {
+                    "description": "The Secrets to ask for, by name, from 1 to 20. The page has a field for each. Only with `page` set to `secrets`.",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Z_][A-Z0-9_]{0,127}$"
+                    }
+                  },
+                  "reason": {
+                    "description": "One sentence, up to 200 characters, on what the Secrets are for. The page shows it as your agent's words. Only with `secrets`.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The deep link.",
+            "headers": {
+              "Idempotency-Key": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The key this request ran under: the one you sent, or one the API generated. To pick up the work after a timeout, retry with this key."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeepLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/tokens": {
       "post": {
         "summary": "Create an App token",
@@ -5020,7 +5148,7 @@
       },
       "OAuth": {
         "type": "oauth2",
-        "description": "An OAuth access token for one person and organization, sent as a bearer token. An agent registers with dynamic client registration and signs in with the authorization code or device authorization grant: https://judt.ai/auth.md describes each step. Request the resource https://api.judt.ai, and also https://api.judt.ai/mcp to use the same token on the MCP server. The person's role still applies.",
+        "description": "An OAuth access token for one person and organization, sent as a bearer token. https://judt.ai/auth.md describes the ways an agent can get one. Request the resource https://api.judt.ai, and also https://api.judt.ai/mcp to use the same token on the MCP server. The person's role still applies.",
         "flows": {
           "authorizationCode": {
             "authorizationUrl": "https://judt.ai/api/auth/oauth2/authorize",
@@ -6881,6 +7009,28 @@
             "type": "string",
             "format": "date-time",
             "description": "When the URL stops working.",
+            "example": "2026-10-03T14:01:30.000Z"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "DeepLink": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The link, for a person to open. It grants no access: the person signs in as usual and needs to be a member of the App's organization."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the link stops working, 24 hours after it was created.",
             "example": "2026-10-03T14:01:30.000Z"
           }
         },

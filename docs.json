@@ -136,7 +136,8 @@
               "GET /api/apps/{id}",
               "PATCH /api/apps/{id}",
               "DELETE /api/apps/{id}",
-              "POST /api/apps/{id}/visitor-tokens"
+              "POST /api/apps/{id}/visitor-tokens",
+              "POST /api/apps/{id}/deep-links"
             ]
           },
           {
