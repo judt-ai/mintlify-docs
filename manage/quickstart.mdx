@@ -203,7 +203,7 @@ Hello from my first App.
 ```
 
 <Note>
-  If a write request returns status `503` or `504`, the operation may still finish on the server. Send an `Idempotency-Key` header with your write requests so you can safely retry with the same key. See [REST API — Idempotency and retries](/manage/interfaces/api#idempotency-and-retries).
+  If a write request returns status `503` or `504`, the operation may still finish on the server. Send an `Idempotency-Key` header with your write requests so you can safely retry with the same key. See [Sandboxes, retries, and time limits](/api-reference/introduction#sandboxes-retries-and-time-limits).
 </Note>
 
 ## Give the work to an agent
@@ -250,6 +250,6 @@ TASK
 ## Next steps
 
 - Learn how commits, builds, and rollbacks work in [Commits and deployments](/manage/concepts/deployments).
-- Connect an MCP client such as Claude Code, Cursor, or VS Code in [MCP server](/manage/interfaces/mcp).
+- Connect an MCP client such as Claude Code, Cursor, or VS Code in [Connect to MCP](/connect-to-mcp).
 - Learn how to write Worker code and configure bindings in [Build Apps](/build/introduction).
 - Browse all endpoints in the [API reference](/api-reference/introduction).
