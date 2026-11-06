@@ -45,7 +45,7 @@ Migration files follow these rules:
 
 - Use flat files named `NNNN_description.sql`, directly in the migrations directory. Files run in name order, so the zero-padded number sets the order.
 - Each file runs in its own transaction. Don't write `BEGIN` or `COMMIT` statements in a migration. A `CREATE TRIGGER ... BEGIN ... END` statement is permitted.
-- Don't change a migration after a deploy. To change the schema again, add another file.
+- Don't change a migration after a deploy or after the dev server applied it. A file that the dev server applied doesn't apply again when you change it. To change the schema again, add another file.
 
 ### How Judt applies migrations at deploy
 
@@ -69,15 +69,9 @@ To remove or rename a column, use two deploys:
 
 ### Test migrations on the dev server
 
-The dev server doesn't apply migrations. To test D1 code, run the same SQL one time from a temporary route, and then remove the route:
+The dev server applies migrations the same way to the dev database. Each time a build starts to serve, it applies the files that the dev database doesn't have yet. App code uses `env.DB` and never applies migrations.
 
-```js index.js
-// TEMPORARY: remove after one call
-if (url.pathname === "/__dev/migrate") {
-  await env.DB.exec(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);`);
-  return new Response("ok");
-}
-```
+If a migration fails on the dev server, then the preview request fails with `preview_failed` and the SQL error. The failed file rolls back. Correct the file, and the next rebuild applies it.
 
 For more information, see [Test on the dev server](/build/dev-server).
 
@@ -177,7 +171,7 @@ Keep large data in [R2](/build/storage/r2).
 
 celld differs from Cloudflare D1 in the following ways:
 
-- Judt applies migrations at deploy, before or after the code goes live. The dev server doesn't apply them.
+- Judt applies migrations at deploy, before or after the code goes live. The dev server also applies them, to the dev database.
 - celld refuses `ATTACH`, `DETACH`, `VACUUM`, `load_extension()`, and `TEMP` objects. FTS5 works, and the D1 PRAGMA list applies.
 - The `dump` method throws.
 - There is no Time Travel and no REST API.

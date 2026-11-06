@@ -92,7 +92,7 @@ Follow these rules when you write a class:
 
 You don't need to `await` a write before you return a response. The output gate holds the response until all writes are durable.
 
-Before an external side effect that depends on a write, call `await this.ctx.storage.sync()`. For example, if you record a "running" mark and then call a payment API, sync the mark first. Without `sync()`, a crash can lose a write that came before an outbound `fetch`.
+The output gate also holds each outbound `fetch` until the writes before it are durable. Before an external side effect that depends on a write, also call `await this.ctx.storage.sync()`. For example, if you record a "running" mark and then call a payment API, sync the mark first. The call makes the order clear in the code, and it throws before the side effect if the write can't become durable.
 
 ## Store data
 
@@ -218,10 +218,15 @@ async webSocketMessage(ws, message) {
 async webSocketClose(ws, code, reason) {
   ws.close(code, reason);
 }
+
+async webSocketError(ws, error) {
+  ws.close(1011, "error");
+}
 ```
 
 Follow these rules for WebSockets:
 
+- A clean close calls `webSocketClose`. An unclean close, such as a dropped connection, calls `webSocketError` instead. Do your cleanup in both handlers, for example for presence.
 - Accept sockets with `this.ctx.acceptWebSocket(server)`. Don't call `server.accept()`, because that socket doesn't hibernate and closes when the event ends.
 - Get the open sockets with `this.ctx.getWebSockets(tag)`. The `tag` argument is optional. Don't keep sockets in a `Set`.
 - Keep small per-socket state with the `serializeAttachment` and `deserializeAttachment` methods.
@@ -260,7 +265,5 @@ celld differs from Cloudflare Durable Objects in the following ways:
 - Jurisdiction APIs throw.
 - One object accepts a maximum of 64 concurrent requests, and then returns `503`.
 - An open write cursor makes celld refuse the response.
-- A write that comes before an outbound `fetch` can be lost in a crash unless you call `ctx.storage.sync()` first.
 - A hibernating WebSocket closes with code `1012` when the object moves to a different node.
 - RPC stubs can't cross isolates, and celld retries an RPC call only if the method didn't start.
-- Don't use `AbortSignal.timeout()` in a Durable Object. Its timer stays after the `fetch` ends and keeps the event open, so the next alarm waits for the timer. For more information, see [Runtime reference](/build/reference/runtime).

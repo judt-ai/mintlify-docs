@@ -108,6 +108,35 @@ If your build already bundles the Worker, as Vite does, then set `no_bundle` to 
 }
 ```
 
-With `no_bundle`, celld uses the entry module byte for byte. It doesn't bundle the module or look for more JavaScript modules, so the entry module must already contain all of the Worker's code.
+With `no_bundle`, celld uses the entry module byte for byte. It doesn't bundle the module, and deploy ships no other JavaScript file. The build must write the Worker as one module that contains all of its dependencies.
+
+For a Vite App, configure the server build to do the following:
+
+- Resolve the `workerd` and `worker` conditions.
+- Bundle all packages, with `noExternal: true`.
+- Keep `cloudflare:` and `node:` imports external.
+- Write one file, with `inlineDynamicImports: true`.
+
+The following example shows this configuration for Vite 8:
+
+```js vite.config.ts
+export default defineConfig({
+  environments: {
+    ssr: {
+      resolve: { conditions: ["workerd", "worker", "module", "browser"], noExternal: true },
+      build: {
+        rolldownOptions: {
+          external: [/^cloudflare:/, /^node:/],
+          output: { inlineDynamicImports: true },
+        },
+      },
+    },
+  },
+});
+```
+
+<Warning>
+Don't use `@cloudflare/vite-plugin` or `vite dev`. They run workerd, and the output of the plugin doesn't deploy on Judt.
+</Warning>
 
 If the build also writes the frontend files, then set `assets.directory` to the directory that holds them. For more information, see [Static assets](/build/static-assets).

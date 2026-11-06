@@ -9,7 +9,11 @@ Each App's sandbox runs a dev server: `celld dev`, from celld, the Judt runtime,
 
 To follow these steps, you need a way to run commands in the App's sandbox, such as the in-product agent, the API, or the MCP server. The sandbox starts when a request needs it.
 
-The dev server starts when the sandbox gets its first preview request, such as when you open a preview URL or the in-product agent uses its `preview` tool. Until then, nothing listens on port 3000. Open a preview before you test with `curl`. For more information about sandboxes and preview URLs, see [Sandbox](/manage/concepts/sandbox).
+The platform starts the dev server when the sandbox starts. The first start runs `npm ci` and the build, so it can take some seconds.
+
+If the dev server stops, for example after a crash or a failed `npm ci` or `build` script, then nothing starts it again until the next preview request. Until then, `curl` to port 3000 gets "connection refused". If the start failed, then the preview request reports the failure and doesn't start the dev server again until a file changes.
+
+To send a preview request, use the in-product agent's `preview` tool, the MCP server's `create_preview` tool, or `POST /api/apps/{id}/preview`. For more information about sandboxes and preview URLs, see [Sandbox](/manage/concepts/sandbox).
 
 ## How the dev server starts
 
@@ -34,6 +38,9 @@ The sandbox doesn't keep `node_modules` when it stops, so the dev server install
 
     If the App has a `build` script, run the build instead. `node --check` checks only the syntax. Node.js can't run Worker code, so a module that passes the check can still fail on the dev server.
   </Step>
+  <Step title="Send a preview request">
+    Send a preview request before you send other requests. It starts the dev server if it isn't running, and it waits for the rebuild that your change started. If the build or the start failed, it returns `422 preview_failed` with the build's output. Without this step, `curl` can get an answer from the previous build.
+  </Step>
   <Step title="Send a request">
     In the sandbox, request a route from the dev server:
 
@@ -41,7 +48,7 @@ The sandbox doesn't keep `node_modules` when it stops, so the dev server install
     curl -s http://127.0.0.1:3000/
     ```
 
-    To open the App in a browser, get a preview URL for the sandbox.
+    To open the App in a browser, use the URL that the preview request returned.
   </Step>
   <Step title="Read the logs">
     If a request fails, read the App's logs. The dev server's entries have the `development` environment. For more information, see [Troubleshoot](/manage/guides/troubleshoot).
@@ -55,25 +62,23 @@ The App's logs collect the following entries from the dev server:
 - **Your code's output**: each `console.*` call and each uncaught exception, with the `app` source. Production writes the same entries.
 - **The dev server's own events**: builds, reloads, and exits, with the `dev_server` source. A `dev.build_failed` entry includes the bundler's report.
 
-If a build fails, then the previous build keeps serving. A request that seems to ignore your change can mean that the change didn't build, so check the logs for a `dev.build_failed` entry.
+If a build fails, then the previous build keeps serving, so a request can still get an answer. A preview request returns `422 preview_failed` until the App builds again. You can also check the logs for a `dev.build_failed` entry.
 
 ## Dev data
 
 The dev server keeps its data in the `.celld/dev/` directory. The data stays after the dev server restarts. Dev data and production data are separate.
 
+Commands can't read the `.celld/dev/` directory. To read dev data, send a request to the App.
+
+## Generated dev server files
+
+The dev server runs from `.judt-dev.json`, a copy of the `wrangler.json` file that the platform keeps. For an App with D1, its `main` key names `.judt-dev.js`, which loads your entry module and applies the migrations. Don't edit or delete these files. If a dev server error names `.judt-dev.json`, then correct your `wrangler.json` file.
+
 ## Test D1 migrations
 
-The dev server doesn't apply D1 migrations. To test code that uses a D1 database, add a temporary route that runs the migration SQL with `env.DB.exec()`. Call the route one time, and then remove it:
+The dev server applies D1 migrations to the dev database, as a deploy does to production. Each time a build starts to serve, the dev server applies the pending files in the `migrations/` directory. A new file applies after the rebuild that it starts. Don't write code that applies migrations.
 
-```js index.js
-// TEMPORARY: remove after one call
-if (url.pathname === "/__dev/migrate") {
-  await env.DB.exec(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);`);
-  return new Response("ok");
-}
-```
-
-At deploy, Judt applies the files in the `migrations/` directory. For more information, see [D1](/build/storage/d1).
+If a migration fails, then the preview request fails with `preview_failed` and the SQL error, and nothing from that file stays. Correct the file, and the next rebuild applies it. A file that the dev server applied doesn't apply again when you change it, so add a new file. For more information, see [D1](/build/storage/d1).
 
 ## Test a Cron Trigger
 

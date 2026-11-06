@@ -24,7 +24,7 @@ To add a namespace, declare it in the `wrangler.json` file:
 
 The configuration follows these rules:
 
-- The `binding` and `id` keys are required. Any stable string is a valid `id` value.
+- The `binding` and `id` keys are required. An `id` value has 1 to 63 letters, digits, `_`, and `-`, and starts with a letter or a digit. Deploy refuses all other values.
 - Deploy refuses every other key, including `preview_id`.
 - You don't provision the namespace. celld creates it on first use.
 - Use a separate namespace for each type of data, for example `SESSIONS`, `FLAGS`, and `CACHE`. Each namespace has its own writer.

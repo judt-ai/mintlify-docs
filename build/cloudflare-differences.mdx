@@ -45,7 +45,7 @@ Every upload and download goes through your Worker, which handles authorization 
 
 ### D1 has no read replicas, Time Travel, or SQL transactions
 
-Every D1 query goes to the primary database, so each read sees all committed writes. The `withSession()` method always uses the primary. The `dump()` method throws, and there's no Time Travel and no REST API. Application SQL can't use `BEGIN`, `COMMIT`, `ROLLBACK`, or `SAVEPOINT`. To run statements in one transaction, use `batch()`. The dev server doesn't apply migrations. For more information, see [D1](/build/storage/d1).
+Every D1 query goes to the primary database, so each read sees all committed writes. The `withSession()` method always uses the primary. The `dump()` method throws, and there's no Time Travel and no REST API. Application SQL can't use `BEGIN`, `COMMIT`, `ROLLBACK`, or `SAVEPOINT`. To run statements in one transaction, use `batch()`. Judt applies migrations at deploy, and the dev server applies them to the dev database. For more information, see [D1](/build/storage/d1).
 
 ### The `request.cf` object has no location data
 

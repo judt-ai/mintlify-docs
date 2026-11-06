@@ -8,7 +8,9 @@ The `wrangler.json` file configures the Worker and declares its bindings. It sit
 
 ## File format
 
-Judt reads only `wrangler.json`. It doesn't read a `wrangler.jsonc` or `wrangler.toml` file. The file must be a JSON object, and JSON has no comments.
+Use a `wrangler.json` file or a `wrangler.jsonc` file. A `wrangler.jsonc` file can contain comments. Keep only one of them: celld reads `wrangler.jsonc` first, and deploy refuses a source that has both. The `wrangler.toml` format isn't supported, and deploy refuses a source that has only a `wrangler.toml` file. These cases return the `unsupported_deploy_configuration` code.
+
+The file must contain one object. The rules on this page apply to both file names.
 
 The following example shows a typical configuration:
 
