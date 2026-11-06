@@ -8,7 +8,7 @@ Judt is built to be integrated into products, agents and platforms. We have two 
 - Direct agent integration via MCP.
 - API integration for workflows you control.
 
-Each path has different implications based on your use case. Both support [direct file edits or delegating work to the Judt agent](/file-vs-agent-edits).
+Each path has different implications based on your use case. With MCP, your agent edits the App's files itself. With the API, your product can edit the files the same way, or give the work to the Judt agent.
 
 ## Direct MCP agent integration
 
@@ -23,12 +23,9 @@ Judt's remote server URL is `https://api.judt.ai/mcp`. It uses Streamable HTTP. 
 
 ### Choose which tools your agent gets
 
-We recommend limiting the tools from the MCP server to the workflow you want:
+We recommend limiting the tools from the MCP server to the ones your agent needs. An agent that edits an App uses tools such as `list_files`, `read_file`, `edit_file`, `write_file`, `run_command`, `create_preview`, and `create_commit`.
 
-- If your agent edits files directly, keep tools such as `list_files`, `read_file`, `write_file`, `run_command`, `create_preview` and `create_commit`. Leave out the Judt agent session and turn tools.
-- If you're using our agent, expose `create_session`, `create_turn`, `list_turns` and `list_session_events` so your agent can send tasks and check progress. Leave out direct file editing and shell commands.
-
-Decide separately whether the agent can publish with `deploy`, or whether your backend handles that after a user approves the result. Make the chosen workflow explicit in your agent's system prompt.
+Decide separately whether the agent can publish with `deploy`, or whether your backend handles that after a user approves the result. If your backend publishes, leave out `deploy` and say so in your agent's system prompt.
 
 Apply the tool selection in your framework or model provider's MCP configuration. This controls which tools the model gets. The token's App scope and your organization role still determine what Judt allows.
 
@@ -102,3 +99,5 @@ If you want our agent to handle the code, your backend manages sessions and mess
 Sending a message returns before the agent finishes. If a turn is `waiting`, surface its input request to the user. For requested Secrets, set them through your backend with `PUT /api/apps/{id}/secrets/{name}`. The turn resumes after all requested Secrets are set.
 
 An App runs one agent at a time. Starting work in another session while one is active returns `409 agent_busy`, so keep track of the active session for each App.
+
+Judt runs the model for each turn. For costs, see [pricing](https://judt.ai/pricing).

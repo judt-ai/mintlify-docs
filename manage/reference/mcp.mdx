@@ -61,7 +61,7 @@ The server is stateless. Each HTTP request stands alone, and the server doesn't 
 
 | Feature | Supported | Notes |
 | --- | --- | --- |
-| Tools | Yes | 38 tools. See [Tools](#tools). |
+| Tools | Yes | See [Tools](#tools). |
 | Tool annotations | Yes | `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. |
 | Structured tool output | Yes | Each result holds `structuredContent` and the same JSON as text. |
 | Server instructions | Yes | The `initialize` result tells the model the usual order of tool calls and how to handle Secrets and retries. |
@@ -113,16 +113,6 @@ The **Effect** column shows the tool's annotations. Many clients use them to dec
 | `list_logs` | Lists the App's log entries from production and the sandbox. | `GET /api/apps/{id}/logs` | Read-only |
 | `list_templates` | Lists the templates that `create_app` can use. | `GET /api/templates` | Read-only |
 | `send_feedback` | Sends feedback to the Judt team. | `POST /api/feedback` | Write |
-| `list_models` | Lists the models that the Judt agent can use. | `GET /api/models` | Read-only |
-| `create_session` | Creates a Judt agent session. If you include `message`, the first turn starts. | `POST /api/apps/{id}/sessions` | Write |
-| `list_sessions` | Lists the App's agent sessions. To get one session, pass `session_id`. | `GET /api/apps/{id}/sessions`<br />`GET /api/apps/{id}/sessions/{session_id}` | Read-only |
-| `update_session` | Renames a session or changes its default model. | `PATCH /api/apps/{id}/sessions/{session_id}` | Write |
-| `delete_session` | Deletes a session with its turns and events. | `DELETE /api/apps/{id}/sessions/{session_id}` | Destructive |
-| `create_turn` | Sends a message to the Judt agent. The turn starts, or waits in a queue behind the active turn. | `POST /api/apps/{id}/sessions/{session_id}/turns` | Write |
-| `list_turns` | Lists a session's turns. To get one turn with its input request, outcome, and token usage, pass `turn_id`. | `GET /api/apps/{id}/sessions/{session_id}/turns`<br />`GET /api/apps/{id}/sessions/{session_id}/turns/{turn_id}` | Read-only |
-| `cancel_turn` | Cancels a queued, running, or waiting turn. | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/cancel` | Destructive |
-| `decline_input` | Declines a turn's pending input request. The agent then continues. | `POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/decline` | Write |
-| `list_session_events` | Returns one page of a session's events, after `cursor`. | `GET /api/apps/{id}/sessions/{session_id}/events` | Read-only |
 
 Tool names are stable identifiers. Judt doesn't rename a tool.
 
@@ -132,6 +122,7 @@ Tool names are stable identifiers. Judt doesn't rename a tool.
 | --- | --- |
 | `GET /api/apps/{id}/git` | `run_command` with a Git command, such as `git status` or `git diff`. |
 | `POST /api/apps/{id}/stop` | No tool. The sandbox stops when it is idle. |
+| `GET /api/models`, and all operations under `/api/apps/{id}/sessions` | No tool. An agent that connects over MCP edits the files itself. To give work to the Judt agent, use the [dashboard](https://judt.ai/apps) or [the API](/platform-integrations#build-a-workflow-around-the-judt-agent). |
 
 ## Arguments
 

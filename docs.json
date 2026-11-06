@@ -29,8 +29,7 @@
             "pages": [
               "manage/concepts/apps",
               "manage/concepts/sandbox",
-              "manage/concepts/deployments",
-              "file-vs-agent-edits"
+              "manage/concepts/deployments"
             ]
           },
           {
@@ -269,6 +268,10 @@
     {
       "source": "/logs",
       "destination": "/manage/guides/troubleshoot"
+    },
+    {
+      "source": "/file-vs-agent-edits",
+      "destination": "/platform-integrations"
     }
   ]
 }
