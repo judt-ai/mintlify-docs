@@ -1,0 +1,104 @@
+---
+title: "Platform integrations"
+description: "Connect your product or agent to Judt through MCP or the API. Choose an editing workflow, scope access to each user's App, and handle progress and retries."
+---
+
+Judt is built to be integrated into products, agents and platforms. We have two paths to an integration:
+
+- Direct agent integration via MCP.
+- API integration for workflows you control.
+
+Each path has different implications based on your use case. Both support [direct file edits or delegating work to the Judt agent](/file-vs-agent-edits).
+
+## Direct MCP agent integration
+
+This plugs Judt directly into your agent's tools. Many agent frameworks and model provider APIs support a remote MCP server:
+
+- [OpenAI remote MCP servers](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+- [Anthropic remote MCP servers](https://platform.claude.com/docs/en/agents-and-tools/remote-mcp-servers)
+- [LangChain and LangGraph MCP](https://docs.langchain.com/oss/python/langchain/mcp)
+- [Mastra MCP](https://mastra.ai/docs/connections/mcp)
+
+Judt's remote server URL is `https://api.judt.ai/mcp`. It uses Streamable HTTP. Pass a Judt API token in the `Authorization: Bearer TOKEN` header through your framework's authentication settings. For client configuration examples, see [Connect to MCP](/connect-to-mcp).
+
+### Choose which tools your agent gets
+
+We recommend limiting the tools from the MCP server to the workflow you want:
+
+- If your agent edits files directly, keep tools such as `list_files`, `read_file`, `write_file`, `run_command`, `create_preview` and `create_commit`. Leave out the Judt agent session and turn tools.
+- If you're using our agent, expose `create_session`, `create_turn`, `list_turns` and `list_session_events` so your agent can send tasks and check progress. Leave out direct file editing and shell commands.
+
+Decide separately whether the agent can publish with `deploy`, or whether your backend handles that after a user approves the result. Make the chosen workflow explicit in your agent's system prompt.
+
+Apply the tool selection in your framework or model provider's MCP configuration. This controls which tools the model gets. The token's App scope and your organization role still determine what Judt allows.
+
+<Info>
+  We're considering allowing you to define your own MCP config, so you can set exactly which tools Judt exposes. If this is interesting, [let us know](https://judt.ai/contact).
+</Info>
+
+### Authenticate to a single App
+
+If your agent is being used by an end user, scope its token to a single App. Create the App through your backend first, then call `POST /api/tokens` with an organization-wide API token to generate access for that App.
+
+Your backend needs to check which App belongs to the user before it creates the token. Keep the organization-wide token on your backend, and pass only the App-scoped token to the agent.
+
+For example, set `JUDT_API_KEY` to your organization-wide API token and `APP_ID` to the user's App ID. Generate a request ID once for this token request:
+
+```bash
+export TOKEN_REQUEST_ID="$(uuidgen)"
+
+curl -X POST https://api.judt.ai/api/tokens \
+  -H "Authorization: Bearer $JUDT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $TOKEN_REQUEST_ID" \
+  -d "{\"name\": \"Customer agent\", \"app_id\": \"$APP_ID\", \"expires_in\": 3600}"
+```
+
+Use the response's `token` value as the bearer token for MCP or API requests. The response also includes `expires_at`.
+
+- `expires_in` is in seconds, from 60 to 86400. The default is 3600, or one hour.
+- The new token never outlives the token that created it.
+- The token can reach only the selected App. It cannot create Apps or more tokens.
+- App scope limits which App the token reaches. It does not add per-tool permissions or reduce the issuing user's organization role.
+
+An OAuth access token or an App-scoped token cannot create these tokens. Use an organization-wide API token for this backend request.
+
+If the token response is lost, retry with the same request ID and body. Judt returns the same token record with a new token value, and the earlier value stops working. You can revoke the token before it expires in the [API keys dashboard](https://judt.ai/api-keys).
+
+<Note>
+  A visitor token from `POST /api/apps/{id}/visitor-tokens` opens the published App. It does not give an agent access to the Judt API or MCP server.
+</Note>
+
+## API integration
+
+This path gives the most flexibility, because you can build your own specific workflows and limitations. Your backend calls Judt and decides which actions your product exposes. You can use this for a custom editor, a chat interface backed by our agent, or a publish button that runs only after a user approves a change.
+
+The base URL is `https://api.judt.ai`. Authenticate requests with `Authorization: Bearer TOKEN`. Use an App-scoped token when the request belongs to one user's App, following the same token flow above.
+
+See the [API reference](/api-reference/introduction) for endpoint details, or use the [OpenAPI specification](https://api.judt.ai/api/openapi.json) to generate a client.
+
+### Build a workflow around file edits
+
+When your agent or editor manages the source, your backend coordinates the work:
+
+1. Create the App with `POST /api/apps`, or use the user's existing App.
+2. Read its files with `GET /api/apps/{id}/files` and `GET /api/apps/{id}/files/{path}`.
+3. Write changes with `PUT /api/apps/{id}/files/{path}`. Send the file's ETag in `If-Match` when replacing a version you read earlier.
+4. Run tests with `POST /api/apps/{id}/commands`, and get a preview with `POST /api/apps/{id}/preview`.
+5. Commit the source with `POST /api/apps/{id}/commits`.
+6. When the user is ready to publish, call `POST /api/apps/{id}/deployments`.
+
+A commit records the source you can deploy. A preview shows the sandbox's current code. Keep those separate in your product so the user knows whether they're reviewing a draft or the published App.
+
+### Build a workflow around the Judt agent
+
+If you want our agent to handle the code, your backend manages sessions and messages:
+
+1. Create a session with `POST /api/apps/{id}/sessions`. Include `message` to start its first turn immediately.
+2. Send follow-up messages with `POST /api/apps/{id}/sessions/{session_id}/turns`.
+3. Follow progress through `GET /api/apps/{id}/sessions/{session_id}/events`. Use JSON polling, or send `Accept: text/event-stream` to stream events.
+4. Read the turn with `GET /api/apps/{id}/sessions/{session_id}/turns/{turn_id}` to check its status and any `input_request`.
+
+Sending a message returns before the agent finishes. If a turn is `waiting`, surface its input request to the user. For requested Secrets, set them through your backend with `PUT /api/apps/{id}/secrets/{name}`. The turn resumes after all requested Secrets are set.
+
+An App runs one agent at a time. Starting work in another session while one is active returns `409 agent_busy`, so keep track of the active session for each App.

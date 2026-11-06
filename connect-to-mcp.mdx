@@ -127,17 +127,14 @@ Pass your API key in the `Authorization` header as a bearer token (`Authorizatio
 
 The MCP server includes tools for two different workflows. For a comparison of trade-offs in control, context, and token cost, see [File vs. Agent Edits](/file-vs-agent-edits):
 
-1. **Direct file and sandbox tools**: Your agent reads and writes files (`list_files`, `read_file`, `write_file`, `delete_file`), runs shell commands (`run_command`), tests on the dev server (`create_preview`), commits (`create_commit`), and publishes (`deploy`). Use this mode when you want your agent in full control of the source code.
+1. **Direct file and sandbox tools**: Your agent reads and changes files (`list_files`, `read_file`, `edit_file`, `write_file`, `delete_file`), runs shell commands (`run_command`), tests on the dev server (`create_preview`), commits (`create_commit`), and publishes (`deploy`). Use this mode when you want your agent in full control of the source code.
 2. **Judt agent session tools**: Your agent delegates tasks to the built-in Judt agent by creating a session (`create_session`), sending a prompt (`create_turn`), and checking progress (`list_turns`, `list_session_events`). Use this mode when you want to treat the Judt agent as a specialized sub-agent that handles the `celld` runtime details for you.
 
-We recommend in your system prompt of your agent, tell it use one pattern or the other. Don't just give it to them. 
-
 <Tip>
-  We recommend in your system prompt of your agent, tell it use one pattern or the other. Don't just give it to them. 
+  In your agent's system prompt, tell it which of the two workflows to use. If it has access to both and no instruction, it can mix them.
 </Tip>
 
 ## Available MCP tools
-
 | Group | Tools | What they do |
 | --- | --- | --- |
 | **Apps** | `list_apps`, `create_app`, `update_app`, `delete_app`, `create_access_token` | Create, inspect, rename, or delete Apps, change production visibility, and mint 5-minute access tokens. |
@@ -151,4 +148,9 @@ We recommend in your system prompt of your agent, tell it use one pattern or the
 
 <Note>
   No MCP tool takes a Secret value, so a value never goes through your model provider's context window. `request_secrets` returns a link to the App's Secrets page in the Judt dashboard, where the user types the values. See [Ask for Secrets from an MCP client](/manage/secrets#ask-for-secrets-from-an-mcp-client).
+=======
+The server has 37 tools for Apps, files, the sandbox, deployments, Secrets, logs, and Judt agent sessions. For each tool, the API operation that it sends, its annotations, and how authentication and errors work, see the [MCP server reference](/manage/reference/mcp).
+
+<Note>
+  No MCP tool takes a Secret value, so a value never goes through your model provider's context window. `request_secrets` gives the user a link to the App's Secrets page in the Judt dashboard, where the user types the values. See [Secrets](/manage/secrets).
 </Note>

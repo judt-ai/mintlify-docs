@@ -28,9 +28,9 @@ You can manage Apps through three interfaces or in the [Judt dashboard](https://
 
 | Interface | When to use it |
 | --- | --- |
-| [REST API](/manage/interfaces/api) | Call `https://api.judt.ai` from scripts, CI jobs, or agents that have a shell and `curl`. |
-| [MCP server](/manage/interfaces/mcp) | Connect an MCP client such as Claude Code, Cursor, VS Code, Codex, claude.ai, or ChatGPT to `https://api.judt.ai/mcp`. |
-| [In-product agent](/manage/interfaces/agent) | Chat with the Judt agent in the dashboard, or start agent sessions and turns through the API. |
+| [REST API](/api-reference/introduction) | Call `https://api.judt.ai` from scripts, CI jobs, or agents that have a shell and `curl`. |
+| [MCP server](/connect-to-mcp) | Connect an MCP client such as Claude Code, Cursor, VS Code, Codex, claude.ai, or ChatGPT to `https://api.judt.ai/mcp`. |
+| [In-product agent](/platform-integrations#build-a-workflow-around-the-judt-agent) | Chat with the Judt agent in the dashboard, or start agent sessions and turns through the API. |
 | CLI | A command line interface you or your agent can use. |
 
 ## How an App works
@@ -39,7 +39,7 @@ An App moves from source code to production in five steps:
 
 1. **Create the App.** Start from a template. Judt gives the App a unique slug and a production URL at `https://<slug>.judt.dev`. See [Apps and addresses](/manage/concepts/apps).
 2. **Edit and test in the sandbox.** Each App has a Linux sandbox with a `/app` working directory, Git repository, shell command runner, and live dev server. The sandbox starts automatically when a request needs it and stops when idle. See [Sandboxes](/manage/concepts/sandbox).
-3. **Set Secrets.** Store API keys and credentials outside your source files. Judt injects Secrets into the sandbox environment and into production deployments as properties on `env`. See [Secrets](/manage/concepts/secrets).
+3. **Set Secrets.** Store API keys and credentials outside your source files. Judt injects Secrets into the sandbox environment and into production deployments as properties on `env`. See [Secrets](/manage/secrets).
 4. **Commit and publish.** Save your sandbox changes as a Git commit with a durable backup, and then deploy that commit to production. See [Commits and deployments](/manage/concepts/deployments).
 5. **Control access and monitor.** Share preview links to the sandbox, set production visibility (`public`, `password`, or `private`), and inspect platform events and runtime logs. See [Previews and access](/manage/concepts/previews) and [Troubleshoot an App](/manage/guides/troubleshoot)
 

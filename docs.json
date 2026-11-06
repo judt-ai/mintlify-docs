@@ -37,17 +37,24 @@
             "group": "Guides",
             "pages": [
               "manage/guides/agent-access",
-              "manage/guides/publish",
               "manage/guides/troubleshoot",
-              "connect-to-mcp"
+              "connect-to-mcp",
+              "platform-integrations"
             ]
           },
           {
             "group": "Features",
             "pages": [
               "manage/secrets",
+              "manage/guides/publish",
               "manage/concepts/previews",
               "logs"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "manage/reference/mcp"
             ]
           }
         ]
