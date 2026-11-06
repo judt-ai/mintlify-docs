@@ -13,11 +13,10 @@ Create an API key in the Judt dashboard to authenticate your MCP client:
   <Step title="Open the API keys page">
     In the [Judt dashboard](https://judt.ai/apps), go to [API keys](https://judt.ai/api-keys) and click **Create key**.
   </Step>
-  <Step title="Choose the App scope and expiration">
+  <Step title="Set the name and expiration">
     Set the following fields:
 
     - **Name**: the client or agent name, such as `Cursor` or `Claude Code`.
-    - **App**: select **one specific App** (recommended) or **All apps**.
     - **Expires**: select a short expiration window such as `1 day` or `7 days` (recommended), or a longer window if needed.
 
     Click **Create key** and copy the key (`judt_...`). The dashboard shows the key only once.
@@ -31,13 +30,13 @@ Create an API key in the Judt dashboard to authenticate your MCP client:
   </Step>
 </Steps>
 
-### Recommended: Use a short-lived, App-scoped key
+### Recommended: Use an App token
 
-Unless your agent needs to create new Apps across your organization, select a single App in **App** and a short expiration (`1 day` or `7 days`) in **Expires** when creating the key:
+A key from the dashboard reaches all Apps in the organization. Unless your agent needs to create new Apps, use this key to create an App token with `POST /api/tokens`, and give the App token to the agent:
 
 - The agent can read and modify only that App (`GET /api/apps` returns only that App, and requests to any other App return `404 not_found`).
 - The agent cannot create new Apps (`403 app_scoped_token`).
-- The key expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
+- The token expires after the time you set, up to 24 hours. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
 
 If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](/api-reference/tokens/create-an-app-token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
 
@@ -136,7 +135,7 @@ The MCP server includes tools for two different workflows. For a comparison of t
 
 ## Available MCP tools
 
-The server has 37 tools for Apps, files, the sandbox, deployments, Secrets, logs, and Judt agent sessions. For each tool, the API operation that it sends, its annotations, and how authentication and errors work, see the [MCP server reference](/manage/reference/mcp).
+The server has 38 tools for your account, Apps, files, the sandbox, deployments, Secrets, logs, and Judt agent sessions. For each tool, the API operation that it sends, its annotations, and how authentication and errors work, see the [MCP server reference](/manage/reference/mcp).
 
 <Note>
   No MCP tool takes a Secret value, so a value never goes through your model provider's context window. `request_secrets` gives the user a link to the App's Secrets page in the Judt dashboard, where the user types the values. See [Secrets](/manage/secrets).

@@ -10,7 +10,7 @@ The following table lists the files and directories that an App can contain:
 
 | Path | Purpose |
 |---|---|
-| `wrangler.json` | The configuration and bindings of the App, in JSON with no comments. Required. |
+| `wrangler.json` | The configuration and bindings of the App. Required. You can use `wrangler.jsonc` instead, which allows comments, but don't keep both. |
 | `index.js` | The entry module. The `main` key in the `wrangler.json` file names it. If a build writes the entry module, `main` is a path such as `dist/index.js`. |
 | `src/` | More modules, which the entry module imports with relative paths. |
 | `package.json` | The npm dependencies and the `build` and `dev` scripts. Optional. |
@@ -49,6 +49,7 @@ Some paths belong to the sandbox, the dev server, or the build, and aren't part 
 - `.celld`
 - `.env` and any name that starts with `.env.`
 - `.dev.vars` and any name that starts with `.dev.vars.`
+- `.judt-dev.json` and `.judt-dev.js`, which the dev server generates
 
 You can't write files at these paths through the platform's file operations. Deploy also refuses symbolic links. The `.gitignore` file in the Judt templates lists `node_modules`, `dist`, `.celld`, the `.env` files, and `.dev.vars`, so a commit leaves them out.
 

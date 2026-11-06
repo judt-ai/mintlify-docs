@@ -185,32 +185,20 @@ The `callModel` method checks the step limit, calls the model, and saves the res
   }
 ```
 
-The `callAnthropic` function is a module-level function. It wraps the request in a timeout with a timer that it clears:
+The `callAnthropic` function is a module-level function. It sets a timeout on the request:
 
 ```js index.js
-async function withTimeout(ms, fn) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error(`timeout after ${ms} ms`)), ms);
-  try {
-    return await fn(controller.signal);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function callAnthropic(env, messages, tools) {
-  const res = await withTimeout(110_000, (signal) =>
-    fetch(`${env.LLM_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
-      method: "POST",
-      signal,
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({ model: env.MODEL, max_tokens: 4096, system: SYSTEM_PROMPT, tools, messages }),
-    }),
-  );
+  const res = await fetch(`${env.LLM_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`, {
+    method: "POST",
+    signal: AbortSignal.timeout(110_000),
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model: env.MODEL, max_tokens: 4096, system: SYSTEM_PROMPT, tools, messages }),
+  });
   if (res.status === 429 || res.status >= 500) {
     const err = new Error(`model ${res.status}`);
     err.retryAfterMs = Number(res.headers.get("retry-after") ?? 0) * 1000 || undefined;
@@ -220,8 +208,6 @@ async function callAnthropic(env, messages, tools) {
   return res.json(); // { content: [...], stop_reason }
 }
 ```
-
-Don't use `AbortSignal.timeout()` in a Durable Object. Its timer keeps the event open after the `fetch` call ends, and the next alarm waits for that timer. The `withTimeout` function clears its timer instead.
 
 A 429 or 5xx response is retryable, and the `alarm` handler retries it with backoff, obeying the `Retry-After` header. Any other 4xx response doesn't improve with a retry, so the function marks it as fatal, and the run fails at once.
 
@@ -330,7 +316,7 @@ const TOOL_IMPL = {
 Follow these rules for tools:
 
 - Validate the input before you use it.
-- For each tool that calls the network, set a timeout with the `withTimeout` function and a limit on the response size. Don't let a URL tool call internal addresses.
+- For each tool that calls the network, set a timeout with `AbortSignal.timeout()` and a limit on the response size. Don't let a URL tool call internal addresses.
 - To run code that the model writes, use a Dynamic Worker with `globalOutbound: null`. For more information, see [Dynamic Workers](/build/advanced/dynamic-workers).
 
 </Step>
@@ -411,7 +397,7 @@ Test the loop on the dev server with a mock model server instead of the real pro
 1. Write a local mock server for the `/v1/messages` path. Return a `tool_use` response first, and a text response second.
 1. In the `vars` key of the `wrangler.json` file, set `LLM_BASE_URL` to the URL of the mock server. Remove the var before you deploy.
 1. Start a run, restart the dev server in the middle of the run, and check that the loop continues.
-1. Stop the dev server with `kill -9` during a tool call, start it again, and check that the tool doesn't run a second time.
+1. Stop the dev server with `kill -9` during a tool call, send a preview request to start it again, and check that the tool doesn't run a second time.
 1. Check that the next step starts less than one second after the previous step ends.
 1. Cancel a run during a model call, and check that the object discards the result.
 

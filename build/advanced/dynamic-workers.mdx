@@ -92,6 +92,7 @@ We recommend the following practices for user code:
 
 - Define a clear contract, for example "export default a function that takes the input and returns JSON."
 - Put each call in a `try...catch` block. User code throws, times out, and reaches limits. Return a 4xx response for these errors, not a 500.
+- Set your own timeouts. `limits.cpuMs` stops a CPU loop, but not a wait on a timer. To stop a `fetch()` to a loaded Worker, pass `signal: AbortSignal.timeout(ms)`. To stop an RPC call, race it against your own timer. The loaded code continues to run until it ends.
 - Before you save user code, do a test load and a test call. Return syntax errors to the user.
 
 ## Give the code capabilities

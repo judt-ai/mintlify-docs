@@ -1,6 +1,6 @@
-# judt docs
+# Judt docs
 
-The source of the judt documentation site, built with [Mintlify](https://mintlify.com).
+The source of the Judt documentation site, built with [Mintlify](https://mintlify.com).
 
 ## Layout
 
@@ -28,4 +28,4 @@ pnpm dlx mint dev
 
 ## Writing style
 
-Write in the Google developer documentation style. Name the runtime "celld, the judt runtime" on its first mention in a page, and "celld" after that.
+Write in the Google developer documentation style. Name the runtime "celld, the Judt runtime" on its first mention in a page, and "celld" after that.

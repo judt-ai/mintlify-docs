@@ -1,8 +1,9 @@
 ---
 title: "Development & Sandboxes"
+description: "Edit files, run commands, commit, and test an App in its Linux sandbox."
 ---
 
-Every App has an isolated Linux sandbox (MicroVM) where you and your agents edit source files, run shell commands, manage Git commits, and test the App on a live dev server before publishing to production. This enables you to edit and create fully functional Apps, preview changes, and have full capability to build what ever you need.
+Every App has an isolated Linux sandbox (MicroVM) where you and your agents edit source files, run shell commands, manage Git commits, and test the App on a live dev server before publishing to production. This enables you to edit and create fully functional Apps, preview changes, and have full capability to build what you need.
 
 When you deploy an App, it will take what's actively in the development environment and attempt to deploy that to production.
 
@@ -45,7 +46,7 @@ Inside the sandbox, your App lives in `/app`:
 | `/app` storage limit | `768 MiB` |
 | Single file size limit (API) | `1 MiB` (`413 file_limit` when exceeded) |
 | Sandbox memory | `2 GiB` |
-| Dev server | `celld dev` on port `3000` (started on demand by `POST /api/apps/{id}/preview`) |
+| Dev server | `celld dev` on port `3000`. It starts with the sandbox. If it stops, `POST /api/apps/{id}/preview` starts it again. |
 
 ### Reserved paths
 
@@ -58,6 +59,8 @@ All file paths in the API are relative to `/app` and cannot start with `/` or co
 - `.git`
 - `dist`
 - `.cache`
+
+The `.agents/skills/judt-apps` directory is read-only. You can read its files, but a write returns `400 reserved_path`.
 
 To install packages in `node_modules` or build output into `dist`, run a shell command with `POST /api/apps/{id}/commands`. To set environment credentials, use [Secrets](/manage/secrets).
 
@@ -74,7 +77,7 @@ curl "https://api.judt.ai/api/apps/$APP_ID/files?glob=src/**/*.ts&pattern=fetch"
 
 | Query parameter | Description |
 | --- | --- |
-| `path` | Subdirectory under `/app` to list or search. |
+| `path` | Returns only files whose path contains this text. The match ignores case. |
 | `glob` | File name or path pattern, such as `*.js` or `src/**/*.ts`. |
 | `content` | Literal text substring to search for inside UTF-8 files. |
 | `pattern` | Perl-compatible regular expression (PCRE) to search for inside UTF-8 files. Cannot be combined with `content`. |
@@ -91,7 +94,7 @@ curl "https://api.judt.ai/api/apps/$APP_ID/files/src/index.js?lines=1-50" \
   -H "Authorization: Bearer $JUDT_API_KEY"
 ```
 
-- **Text files**: Returns JSON with `path`, `size`, `binary: false`, `content`, and `line_count` (or `lines` when you pass `?lines=120`, `?lines=120-180`, or `?lines=120-`).
+- **Text files**: Returns JSON with `path`, `size`, `binary: false`, `content`, and `line_count`. It also includes `lines` when you pass `?lines=120`, `?lines=120-180`, or `?lines=120-`.
 - **Binary files**: A JSON request returns metadata with `binary: true` and no `content`. Send `Accept: application/octet-stream` to download the raw bytes.
 - **ETag caching**: Every response includes an `ETag` header (the quoted SHA-256 hash of the file). Send `If-None-Match: "<etag>"` on later reads to receive `304 Not Modified` when the file has not changed.
 
@@ -107,7 +110,7 @@ Call `DELETE /api/apps/{id}/files/{path}` to delete a file and clean up any empt
 
 ## Run shell commands
 
-Call `POST /api/apps/{id}/commands` to run a shell command (`sh -c`) inside `/app`:
+Call `POST /api/apps/{id}/commands` to run a shell command with Bash inside `/app`:
 
 ```bash
 curl -X POST https://api.judt.ai/api/apps/$APP_ID/commands \
@@ -135,6 +138,7 @@ The command runs as `editor` in `/app`. It does not get the App's Secrets, and i
 ```
 
 - `timeout_seconds`: `1` to `120` seconds (default `60`). If the command exceeds the timeout, the API terminates the process group and returns `status: "timed_out"`.
+- `status`: If the command ends without a result, for example because the sandbox was lost, the API returns `status: "interrupted"` and `exit_code` is `null`. The effects of the command are unknown, and it does not run again.
 - `exit_code`: A non-zero exit code still returns HTTP `200` with `status: "completed"`. Always check `exit_code` in the response body.
 - `output`: Combined `stdout` and `stderr`, up to `64 KiB` (`truncated: true` if output exceeded 64 KiB).
 

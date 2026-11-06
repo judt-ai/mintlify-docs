@@ -100,7 +100,7 @@ Each item in `results` is a `Log`:
 | `dev_server` | Sandbox `celld dev` bundler and hot-reload output. | `dev.build_failed`, `dev.exited` |
 | `deployment` | Build and migration output during `POST /api/apps/{id}/deployments`. | `deployment.failed` |
 | `runtime` | Production instance lifecycle transitions. | `instance.transition` |
-| `platform` | Log pipeline notices. | `telemetry.capped` (log rate limit reached for a request) |
+| `platform` | Log pipeline notices. | `telemetry.capped` (the App logged more than its limit for each minute) |
 
 ## Common troubleshooting scenarios
 

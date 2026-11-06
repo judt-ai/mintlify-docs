@@ -67,7 +67,7 @@ curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
 
 The API never returns the password in responses; instead, `production.password_updated_at` records when the password was last set. Setting a new password immediately invalidates existing browser sessions that signed in with the old password.
 
-Once an App has a password stored, you can switch between `visibility: "public"`, `"private"`, and `"password"` without resending `password`, or pass a new `password` to rotate it.
+To change the password, pass a new `password`. If the App moves to another visibility, Judt deletes the password. To go back to `password` visibility, send a new password. If you do not, the API returns `400 password_required`. If you send a password with another visibility, the API returns `400 password_not_applicable`.
 
 ### Restrict to organization members
 

@@ -42,7 +42,7 @@ celld decides whether an asset or the Worker answers each request. It applies th
 1. A request whose path matches `run_worker_first` goes to the Worker.
 1. The rules in the `_redirects` file apply in file order. The first rule that matches wins.
 1. `html_handling` finds the file. For example, `/about` serves `/about.html`, and `/about/` serves `/about/index.html`. A request for a different spelling of the path gets a `307` redirect.
-1. If no file matches and the request is a browser navigation, then `not_found_handling` applies. `single-page-application` returns `/index.html` with status `200`. `404-page` returns the nearest `404.html` file with status `404`.
+1. If no file matches and the request is a browser navigation, then `not_found_handling` applies. A browser navigation has the `Sec-Fetch-Mode: navigate` header, and the App must have a `compatibility_date` of `2025-04-01` or later. `curl` doesn't send this header, so its request goes to the Worker. `single-page-application` returns `/index.html` with status `200`. `404-page` returns the nearest `404.html` file with status `404`.
 1. All other requests go to the Worker.
 
 ### Serve a single-page app with an API
@@ -60,13 +60,19 @@ To serve a single-page app beside an API, do the following:
 ```js index.js
 if (url.pathname.startsWith("/admin")) {
   if (!(await isAdmin(request, env))) return Response.redirect(new URL("/login", url), 302);
-  return env.ASSETS.fetch(new URL("/admin/index.html", url));
+  return env.ASSETS.fetch(new URL("/admin", url)); // Serves admin.html
 }
 ```
 
+Put a page that the Worker serves at the top of the assets directory, such as `admin.html`, and ask for it without the extension, such as `/admin`. `html_handling` also applies to `env.ASSETS.fetch()`, so `/admin.html` gets a `307` redirect to `/admin`.
+
 <Warning>
-Add `"/admin/*"` to `run_worker_first`. If you don't, celld serves the `admin/index.html` file to every user, and the check in the Worker never runs.
+Add both `"/admin"` and `"/admin/*"` to `run_worker_first`. If you don't, celld serves the `admin.html` file to every user, and the check in the Worker never runs.
 </Warning>
+
+<Note>
+In celld 0.6.3, `env.ASSETS.fetch()` doesn't find a nested `index.html` file. `/admin/` gives a `404` response, and `/admin` and `/admin/index.html` give a `307` redirect.
+</Note>
 
 To add data to a page, transform the asset response with `HTMLRewriter`. If you put JSON into a `<script>` element, escape each `<` character in the JSON.
 

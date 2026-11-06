@@ -19,9 +19,10 @@ An API key is the primary credential for scripts, CI jobs, and agents. Each API 
 Authorization: Bearer judt_...
 ```
 
-- **Create a key in the dashboard**: On the [API keys](https://judt.ai/api-keys) page, click **Create key**. Select **All apps** or select **one App**, and set an expiration time (`1 day` to `90 days`, or `No expiration`). Copy the key. The dashboard shows the full key one time only.
-- **Create a short-lived App token with the API**: Use an organization-wide API key (`All apps`) to call `POST /api/tokens`. This endpoint creates a token for one App that expires after `60` to `86400` seconds (up to 24 hours). Give this token to an agent that must access only that App. See [Give an agent access to a single App](/manage/guides/agent-access).
-- **Revoke a key**: Click **Revoke** next to the key on the [API keys](https://judt.ai/api-keys) page. The key stops working immediately.
+- **Create a key in the dashboard**: On the [API keys](https://judt.ai/api-keys) page, click **Create key**. Set a name and an expiration time (`1 day` to `90 days`, or `No expiration`). Copy the key. The dashboard shows the full key one time only. A key from the dashboard reaches all Apps in the organization.
+- **Create an App token with the API**: To give an agent access to only one App, use an organization-wide API key to call `POST /api/tokens`. This endpoint creates a token for one App that expires after `60` to `86400` seconds (up to 24 hours). See [Give an agent access to a single App](/manage/guides/agent-access).
+- **Check a credential**: Call `GET /api/me` to see the person, the organization, the role, and whether the credential reaches one App or all Apps.
+- **Revoke a key**: On the [API keys](https://judt.ai/api-keys) page, open the menu of the key and click **Revoke**. The key stops working immediately.
 
 ## Agent OAuth
 
@@ -30,14 +31,16 @@ With OAuth, you approve an agent or MCP client in your browser. You do not copy 
 An agent can start OAuth in two ways:
 
 - **From the MCP server**: Connect an MCP client that supports OAuth (such as Claude Code, Cursor, VS Code, claude.ai, or ChatGPT) to `https://api.judt.ai/mcp` without an `Authorization` header. The server returns `401 Unauthorized` with the `resource_metadata` URL in the `WWW-Authenticate` header, and the client opens your browser so you can sign in and approve access. See [Connect to MCP](/connect-to-mcp).
-- **From `auth.md` and the OAuth endpoints**: Standalone agents follow the instructions at [`https://judt.ai/auth.md`](https://judt.ai/auth.md):
-  1. Read the server metadata at `https://judt.ai/.well-known/oauth-authorization-server` (or `https://judt.ai/.well-known/poppy.json` for the Personal Agent Protocol).
-  2. Register one time at `POST https://judt.ai/api/auth/oauth2/register`.
-  3. Request a device code and user code at `POST https://judt.ai/api/auth/device/code`.
-  4. Give the verification link (`https://judt.ai/device`) and the user code to the user.
-  5. Poll `POST https://judt.ai/api/auth/oauth2/token` until the user approves access, and use the same endpoint to refresh tokens.
+- **From `auth.md`**: An agent can register itself with only the email address of its user. For the full procedure, see [`https://judt.ai/auth.md`](https://judt.ai/auth.md):
+  1. Read the server metadata at `https://judt.ai/.well-known/oauth-authorization-server`.
+  2. Register at `POST https://judt.ai/api/auth/agent/identity` with `type: "service_auth"` and the email address in `login_hint`.
+  3. Give the verification link (`https://judt.ai/device`) and the user code to the user. Only the account with that email address can approve the code.
+  4. Poll `POST https://judt.ai/api/auth/oauth2/token` until the user approves access. The response has an access token and an identity assertion.
+  5. To get a new access token, send the identity assertion to the same endpoint.
 
-To disconnect an agent, go to [Connected agents](https://judt.ai/connected-agents) and click **Disconnect**. An agent can also revoke its own refresh token at `POST https://judt.ai/api/auth/oauth2/revoke`.
+An agent that already uses the OAuth device flow can register as an OAuth client instead. An agent that uses the Personal Agent Protocol starts at `https://judt.ai/.well-known/poppy.json`. `auth.md` describes both.
+
+To disconnect an agent, go to [Connections](https://judt.ai/connections) and click **Disconnect**. An agent can also revoke its own refresh token at `POST https://judt.ai/api/auth/oauth2/revoke`.
 
 ## Other details
 

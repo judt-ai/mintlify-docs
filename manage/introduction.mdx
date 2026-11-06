@@ -24,14 +24,14 @@ Every Judt App runs on [celld](https://github.com/denoland/celld), a Workers-com
 
 ## Manage Apps
 
-You can manage Apps through three interfaces or in the [Judt dashboard](https://judt.ai/apps). All three interfaces share the same permissions, validation rules, and state.
+You can manage Apps through four interfaces or in the [Judt dashboard](https://judt.ai/apps). All four interfaces share the same permissions, validation rules, and state.
 
 | Interface | When to use it |
 | --- | --- |
 | [REST API](/api-reference/introduction) | Call `https://api.judt.ai` from scripts, CI jobs, or agents that have a shell and `curl`. |
 | [MCP server](/connect-to-mcp) | Connect an MCP client such as Claude Code, Cursor, VS Code, Codex, claude.ai, or ChatGPT to `https://api.judt.ai/mcp`. |
 | [In-product agent](/platform-integrations#build-a-workflow-around-the-judt-agent) | Chat with the Judt agent in the dashboard, or start agent sessions and turns through the API. |
-| CLI | A command line interface you or your agent can use. |
+| [CLI](/manage/guides/cli) | Run `npx judt` from a shell, a CI job, or an agent that has no MCP client. |
 
 ## How an App works
 
@@ -55,7 +55,7 @@ An App moves from source code to production in five steps:
   </Card>
 
   <Card title="Give an agent access" icon="robot" href="/manage/guides/agent-access">
-    Connect an external agent with an App-scoped API key or OAuth sign-in.
+    Connect an external agent with an App token or OAuth sign-in.
   </Card>
 
   <Card title="Build Apps" icon="code" href="/build/introduction">

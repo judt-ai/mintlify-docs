@@ -65,6 +65,23 @@ The `ctx` object is the third argument of each handler. The following table list
 
 In a Durable Object, `this.ctx.exports` gives the same stubs. A Durable Object doesn't need `ctx.waitUntil`, because pending I/O stays alive after the handler returns.
 
+## The public origin
+
+In production, `request.url` has the App's public origin, such as `https://<slug>.judt.dev`. On the dev server, `request.url` names the sandbox over `http`.
+
+Judt sends the `X-Forwarded-Host` and `X-Forwarded-Proto` headers with the public origin on each request, in preview and in production. Judt replaces any value that the client sent. Use these headers when you build an absolute URL, such as an OAuth redirect, a feed link, or a webhook signature, or when you compare the `Origin` header:
+
+```js
+function publicOrigin(request) {
+  const url = new URL(request.url);
+  const host = request.headers.get("X-Forwarded-Host") ?? url.host;
+  const proto = request.headers.get("X-Forwarded-Proto") ?? url.protocol.slice(0, -1);
+  return `${proto}://${host}`;
+}
+```
+
+You can trust these headers only on Judt. Behind a different proxy, a client can set them.
+
 ## Imports
 
 The entry module can import relative modules, such as `./src/db.js`, the `cloudflare:*` modules in the following table, and the Node.js built-in modules that celld supports. At deploy, esbuild bundles the entry module, its relative imports, and the npm packages that it imports. For more information, see [npm packages and builds](/build/npm-and-builds).
@@ -189,25 +206,11 @@ Keep the API keys for outbound calls in Secrets, and read them from `env`, for e
 
 ### Set a timeout
 
-Set a timeout on each outbound call. Use an `AbortController`, and clear its timer when the call ends:
+Set a timeout on each outbound call:
 
 ```js
-async function withTimeout(ms, fn) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error(`timeout after ${ms} ms`)), ms);
-  try {
-    return await fn(controller.signal);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-const res = await withTimeout(30_000, (signal) => fetch(url, { signal }));
+const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 ```
-
-### Timeouts in Durable Objects
-
-Don't use `AbortSignal.timeout()` in a Durable Object. Its timer stays active after the `fetch` call ends, and the timer keeps the event open. The next alarm then waits for the timer to fire. Use the `withTimeout` function from the preceding section.
 
 ## Compatibility flags
 
