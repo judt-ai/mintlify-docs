@@ -62,7 +62,7 @@ Each API key and OAuth token acts as you in one organization and has your role i
 | Role | Allowed actions |
 | --- | --- |
 | `owner`, `admin` | All actions: create, update, and delete Apps (`POST /api/apps`, `PATCH /api/apps/{id}`, `DELETE /api/apps/{id}`), set and delete Secrets (`PUT` and `DELETE` on `/api/apps/{id}/secrets`), and publish or unpublish deployments (`POST /api/apps/{id}/deployments`, `POST /api/apps/{id}/unpublish`). |
-| `member` | Read all App resources (including Secret names), write and delete sandbox files, run commands, create and restore commits, create sandbox preview links, create 5-minute App access tokens (`POST /api/apps/{id}/access`), and run agent sessions and turns. Owner-only and admin-only endpoints return `403 forbidden`. |
+| `member` | Read all App resources (including Secret names), write and delete sandbox files, run commands, create and restore commits, create sandbox preview links, create 5-minute visitor tokens (`POST /api/apps/{id}/visitor-tokens`), and run agent sessions and turns. Owner-only and admin-only endpoints return `403 forbidden`. |
 
 ## Sandboxes, retries, and time limits
 
@@ -72,7 +72,7 @@ Each API key and OAuth token acts as you in one organization and has your role i
   - `4xx` or `502`: The result is final. Correct the cause before you send a new request.
 - **Time limits**:
   - File writes, commits, restores, and `POST /api/apps/{id}/stop`: `120` seconds (plus up to `120` seconds if the request starts a stopped sandbox).
-  - Commands (`POST /api/apps/{id}/command`): `timeout_seconds` (up to `120` seconds), plus `60` seconds to stop the command and save its output.
+  - Commands (`POST /api/apps/{id}/commands`): `timeout_seconds` (up to `120` seconds), plus `60` seconds to stop the command and save its output.
   - Publishing, unpublishing, deleting an App, and changing production settings: `540` seconds.
 
 ## Errors
@@ -120,7 +120,7 @@ When the server rejects a credential, it returns a JSON error body and sets the 
 | `409` | `idempotency_expired` | The `Idempotency-Key` is older than 30 days. |
 | `409` | `slug_unavailable` | Another App (or a deleted App) uses the slug, or the slug is reserved. |
 | `409` | `deployment_unsettled` | Another deployment of the App is in progress (`detail` gives the deployment ID). |
-| `409` | `app_unpublished` | `POST /api/apps/{id}/access` was called on an App that is not published. |
+| `409` | `app_unpublished` | `POST /api/apps/{id}/visitor-tokens` was called on an App that is not published. |
 | `410` | `app_deleted` | The App is deleted. Only its tombstone and history are readable. |
 | `412` | `precondition_failed` | The `If-Match` or `If-None-Match` ETag header did not match the file. |
 | `413` | `payload_too_large` | The request body is larger than the limit (for example, 1 MiB for a file). |

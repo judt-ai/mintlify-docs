@@ -19,7 +19,7 @@ This plugs Judt directly into your agent's tools. Many agent frameworks and mode
 - [LangChain and LangGraph MCP](https://docs.langchain.com/oss/python/langchain/mcp)
 - [Mastra MCP](https://mastra.ai/docs/connections/mcp)
 
-Judt's remote server URL is `https://api.judt.ai/mcp`. It uses Streamable HTTP. Pass a Judt API token in the `Authorization: Bearer TOKEN` header through your framework's authentication settings. For client configuration examples, see [Connect to MCP](/connect-to-mcp).
+Judt's remote server URL is `https://api.judt.ai/mcp`. It uses Streamable HTTP. Pass a Judt API key in the `Authorization: Bearer TOKEN` header through your framework's authentication settings. For client configuration examples, see [Connect to MCP](/connect-to-mcp).
 
 ### Choose which tools your agent gets
 
@@ -38,11 +38,11 @@ Apply the tool selection in your framework or model provider's MCP configuration
 
 ### Authenticate to a single App
 
-If your agent is being used by an end user, scope its token to a single App. Create the App through your backend first, then call `POST /api/tokens` with an organization-wide API token to generate access for that App.
+If your agent is being used by an end user, scope its token to a single App. Create the App through your backend first, then call `POST /api/tokens` with an organization-wide API key to generate access for that App.
 
-Your backend needs to check which App belongs to the user before it creates the token. Keep the organization-wide token on your backend, and pass only the App-scoped token to the agent.
+Your backend needs to check which App belongs to the user before it creates the token. Keep the organization-wide key on your backend, and pass only the App-scoped token to the agent.
 
-For example, set `JUDT_API_KEY` to your organization-wide API token and `APP_ID` to the user's App ID. Generate a request ID once for this token request:
+For example, set `JUDT_API_KEY` to your organization-wide API key and `APP_ID` to the user's App ID. Generate a request ID once for this token request:
 
 ```bash
 export TOKEN_REQUEST_ID="$(uuidgen)"
@@ -61,7 +61,7 @@ Use the response's `token` value as the bearer token for MCP or API requests. Th
 - The token can reach only the selected App. It cannot create Apps or more tokens.
 - App scope limits which App the token reaches. It does not add per-tool permissions or reduce the issuing user's organization role.
 
-An OAuth access token or an App-scoped token cannot create these tokens. Use an organization-wide API token for this backend request.
+An OAuth access token or an App-scoped token cannot create these tokens. Use an organization-wide API key for this backend request.
 
 If the token response is lost, retry with the same request ID and body. Judt returns the same token record with a new token value, and the earlier value stops working. You can revoke the token before it expires in the [API keys dashboard](https://judt.ai/api-keys).
 

@@ -7,7 +7,7 @@ Judt separates access to your development **sandbox** from access to your publis
 
 - **Sandbox previews** let you and your agents test uncommitted code on the sandbox dev server through a short-lived signed URL.
 - **Production visibility** (`public`, `password`, or `private`) controls who can open your published App at `https://<slug>.judt.dev` or its custom domain.
-- **Access tokens** let scripts, webhooks, and agents call a `password` or `private` production App without an interactive browser sign-in.
+- **Visitor tokens** let scripts, webhooks, and agents call a `password` or `private` production App without an interactive browser sign-in.
 
 ## Sandbox preview links
 
@@ -22,12 +22,12 @@ When you call `POST /api/apps/{id}/preview`, Judt does the following:
 
 1. Starts the sandbox if it is stopped.
 2. Starts `celld dev` on port `3000` (if not already running) and waits for the bundler to build your entry module.
-3. Returns a signed preview URL that is valid for 5 minutes (`expires_in: 300`):
+3. Returns a signed preview URL that is valid for 5 minutes. The `expires_at` field says when the URL stops working:
 
 ```json
 {
-  "url": "https://customer-portal.preview.judt.dev/#token=eyJhbGci...",
-  "expires_in": 300
+  "url": "https://PREVIEW_HOST/__judt/access#token=eyJhbGci...",
+  "expires_at": "2026-10-15T20:35:00.000Z"
 }
 ```
 
@@ -86,12 +86,12 @@ curl -X PATCH https://api.judt.ai/api/apps/$APP_ID \
 
 When a visitor opens the App URL in a browser, Judt redirects them to sign in and verifies that they belong to the App's organization.
 
-## Short-lived production access tokens
+## Short-lived visitor tokens
 
-When a published App uses `password` or `private` visibility, automated callers—such as agents, curl scripts, or webhook tests—cannot complete an interactive browser sign-in. Any organization member (including `member` roles) can mint a 5-minute access token for a published App by calling `POST /api/apps/{id}/access`:
+When a published App uses `password` or `private` visibility, automated callers—such as agents, curl scripts, or webhook tests—cannot complete an interactive browser sign-in. Any organization member (including `member` roles) can create a 5-minute visitor token for a published App by calling `POST /api/apps/{id}/visitor-tokens`:
 
 ```bash
-curl -X POST https://api.judt.ai/api/apps/$APP_ID/access \
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/visitor-tokens \
   -H "Authorization: Bearer $JUDT_API_KEY"
 ```
 
@@ -104,16 +104,16 @@ The API returns a short-lived token (`expires_at` is 5 minutes in the future):
 }
 ```
 
-If the App is not currently published, `POST /api/apps/{id}/access` returns `409 app_unpublished`.
+If the App is not currently published, `POST /api/apps/{id}/visitor-tokens` returns `409 app_unpublished`. A public App ignores the token.
 
-### Use an access token
+### Use a visitor token
 
-You can send the access token to the published App in two ways:
+You can send the visitor token to the published App in two ways:
 
 1. **`X-Judt-Access-Token` request header (recommended for scripts and agents)**:
    ```bash
    curl https://customer-portal.judt.dev/api/items \
-     -H "X-Judt-Access-Token: $APP_ACCESS_TOKEN"
+     -H "X-Judt-Access-Token: $VISITOR_TOKEN"
    ```
    Using `X-Judt-Access-Token` authorizes the request at the Judt edge while leaving the `Authorization` header free for your App's own authentication logic.
 2. **`?access_token=` URL query parameter (for browsers)**:

@@ -42,6 +42,6 @@ To disconnect an agent, go to [Connected agents](https://judt.ai/connected-agent
 ## Other details
 
 - **Organization roles**: Every API key and OAuth token acts as you in one organization and has your role (`owner`, `admin`, or `member`). An agent cannot do an action that your role does not allow.
-- **Tokens that open a private App**: To open a published App (`https://<slug>.judt.dev`) that uses `password` or `private` visibility without a browser sign-in, create a 5-minute access token with `POST /api/apps/{id}/access`. Send this token in the `X-Judt-Access-Token` header or the `access_token` URL parameter. See [Previews and access](/manage/concepts/previews).
+- **Tokens that open a private App**: To open a published App (`https://<slug>.judt.dev`) that uses `password` or `private` visibility without a browser sign-in, create a 5-minute visitor token with `POST /api/apps/{id}/visitor-tokens`. Send this token in the `X-Judt-Access-Token` header or the `access_token` URL parameter. See [Previews and access](/manage/concepts/previews).
 
 For OAuth scopes, token lifetimes, DPoP key binding, role permissions, and error codes, see the [API reference](/api-reference/introduction).

@@ -19,7 +19,7 @@ You do not need to actively manage the development environment state. Judt manag
 
 | Behavior | Endpoints |
 | --- | --- |
-| **Starts the sandbox if stopped** | `/api/apps/{id}/files`, `/api/apps/{id}/files/{path}`, `/api/apps/{id}/git`, `POST /api/apps/{id}/command`, `POST /api/apps/{id}/commits`, `POST /api/apps/{id}/restore`, `POST /api/apps/{id}/preview`, `POST /api/apps/{id}/deployments` |
+| **Starts the sandbox if stopped** | `/api/apps/{id}/files`, `/api/apps/{id}/files/{path}`, `/api/apps/{id}/git`, `POST /api/apps/{id}/commands`, `POST /api/apps/{id}/commits`, `POST /api/apps/{id}/restore`, `POST /api/apps/{id}/preview`, `POST /api/apps/{id}/deployments` |
 | **Does not start the sandbox** | `GET /api/apps`, `GET /api/apps/{id}`, `PATCH /api/apps/{id}`, `GET /api/apps/{id}/commits`, `GET /api/apps/{id}/deployments`, `/api/apps/{id}/secrets`, `GET /api/apps/{id}/events`, `GET /api/apps/{id}/logs` |
 
 ### Sandbox status values
@@ -42,7 +42,7 @@ Inside the sandbox, your App lives in `/app`:
 | --- | --- |
 | Working directory | `/app` |
 | Linux user | `editor` |
-| Workspace storage limit | `384 MiB` (`413 storage_limit` when exceeded) |
+| `/app` storage limit | `768 MiB` |
 | Single file size limit (API) | `1 MiB` (`413 file_limit` when exceeded) |
 | Sandbox memory | `2 GiB` |
 | Dev server | `celld dev` on port `3000` (started on demand by `POST /api/apps/{id}/preview`) |
@@ -59,7 +59,7 @@ All file paths in the API are relative to `/app` and cannot start with `/` or co
 - `dist`
 - `.cache`
 
-To install packages in `node_modules` or build output into `dist`, run a shell command with `POST /api/apps/{id}/command`. To set environment credentials, use [Secrets](/manage/secrets).
+To install packages in `node_modules` or build output into `dist`, run a shell command with `POST /api/apps/{id}/commands`. To set environment credentials, use [Secrets](/manage/secrets).
 
 ## Read and write files
 
@@ -78,7 +78,7 @@ curl "https://api.judt.ai/api/apps/$APP_ID/files?glob=src/**/*.ts&pattern=fetch"
 | `glob` | File name or path pattern, such as `*.js` or `src/**/*.ts`. |
 | `content` | Literal text substring to search for inside UTF-8 files. |
 | `pattern` | Perl-compatible regular expression (PCRE) to search for inside UTF-8 files. Cannot be combined with `content`. |
-| `sort` | `path` (default), `-path`, `size`, `-size`, `updated_at`, or `-updated_at`. |
+| `sort` | `path` (default), `-path`, `size`, or `-size`. |
 
 When you pass `content` or `pattern`, each matching file in `results` includes `match_count` and up to 20 `matches` (`[{ "line": 12, "text": "..." }]`).
 
@@ -107,10 +107,10 @@ Call `DELETE /api/apps/{id}/files/{path}` to delete a file and clean up any empt
 
 ## Run shell commands
 
-Call `POST /api/apps/{id}/command` to run a shell command (`sh -c`) inside `/app`:
+Call `POST /api/apps/{id}/commands` to run a shell command (`sh -c`) inside `/app`:
 
 ```bash
-curl -X POST https://api.judt.ai/api/apps/$APP_ID/command \
+curl -X POST https://api.judt.ai/api/apps/$APP_ID/commands \
   -H "Authorization: Bearer $JUDT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -119,7 +119,7 @@ curl -X POST https://api.judt.ai/api/apps/$APP_ID/command \
   }'
 ```
 
-The command runs as `editor` in `/app` with the App's Secrets set as environment variables.
+The command runs as `editor` in `/app`. It does not get the App's Secrets, and its output shows any Secret value as `[secret:NAME]`.
 
 ```json
 {
@@ -144,18 +144,18 @@ The `/app` directory is a Git repository.
 
 ### Inspect uncommitted changes
 
-Call `GET /api/apps/{id}/git` with a `mode` query parameter:
+Call `GET /api/apps/{id}/git` with a `mode` query parameter. The response has Git's output in the `output` field:
 
 | `mode` | Output |
 | --- | --- |
-| `status` (default) | Current `head` SHA, `clean` boolean, and `files` list (`path`, `status`, `previous_path`). |
-| `diff` | Unified diff (`diff` text and `truncated` boolean) of uncommitted changes against `HEAD`. |
-| `stat` | Diffstat summary of changed files and line counts. |
-| `history` | Recent Git commit log from the sandbox repository. |
+| `status` (default) | The Git status. |
+| `diff` | The uncommitted changes, as a patch. |
+| `stat` | A summary of the uncommitted changes. |
+| `history` | The recent commits. |
 
 ### Commit changes
 
-Call `POST /api/apps/{id}/commits` with a single-line `message` (`1` to `240` characters) to stage all changes in `/app`, create a Git commit, and save a durable backup (`recovery_point_id`). If no files have changed since `HEAD`, the API returns `409 nothing_to_commit`.
+Call `POST /api/apps/{id}/commits` with a single-line `message` (`1` to `240` characters) to stage all changes in `/app`, create a Git commit, and save a durable backup.
 
 ### Restore an earlier commit
 

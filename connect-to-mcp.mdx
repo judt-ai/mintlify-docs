@@ -3,7 +3,7 @@ title: "Connect to MCP"
 description: "Connect your coding agent to the Judt MCP server with an API key or OAuth."
 ---
 
-The Judt MCP server exposes every Judt API operation as a native tool, so your agent can discover and call operations directly without parsing the OpenAPI specification. Use MCP whenever your agent or editor supports the Model Context Protocol.
+The Judt MCP server exposes the Judt API as native tools, so your agent can discover and call operations directly without parsing the OpenAPI specification. Use MCP whenever your agent or editor supports the Model Context Protocol.
 
 ## Get an API key
 
@@ -31,15 +31,15 @@ Create an API key in the Judt dashboard to authenticate your MCP client:
   </Step>
 </Steps>
 
-### Recommended: Use a short-lived, App-scoped token
+### Recommended: Use a short-lived, App-scoped key
 
 Unless your agent needs to create new Apps across your organization, select a single App in **App** and a short expiration (`1 day` or `7 days`) in **Expires** when creating the key:
 
 - The agent can read and modify only that App (`GET /api/apps` returns only that App, and requests to any other App return `404 not_found`).
 - The agent cannot create new Apps (`403 app_scoped_token`).
-- The token expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
+- The key expires automatically after the window you set. For more details, see [Give an agent access to a single App](/manage/guides/agent-access).
 
-If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](https://docs.judt.ai/api-reference/token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
+If you're using MCP in an agent your users/customers use, it's recommended to use the create [token API](/api-reference/tokens/create-an-app-token) dynamically to generate a token you embed into the MCP config for the agent. This way the agent does not have access to all Apps -- only the one the user should have access to.
 
 ## Configure your MCP client
 

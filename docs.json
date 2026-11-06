@@ -124,6 +124,12 @@
             ]
           },
           {
+            "group": "Account",
+            "pages": [
+              "GET /api/me"
+            ]
+          },
+          {
             "group": "Apps",
             "pages": [
               "POST /api/apps",
@@ -131,17 +137,22 @@
               "GET /api/apps/{id}",
               "PATCH /api/apps/{id}",
               "DELETE /api/apps/{id}",
-              "POST /api/apps/{id}/access"
+              "POST /api/apps/{id}/visitor-tokens"
+            ]
+          },
+          {
+            "group": "Tokens",
+            "pages": [
+              "POST /api/tokens"
             ]
           },
           {
             "group": "Secrets",
             "pages": [
               "GET /api/apps/{id}/secrets",
-              "PUT /api/apps/{id}/secrets",
-              "GET /api/apps/{id}/secrets/{secret}",
-              "PUT /api/apps/{id}/secrets/{secret}",
-              "DELETE /api/apps/{id}/secrets/{secret}"
+              "GET /api/apps/{id}/secrets/{name}",
+              "PUT /api/apps/{id}/secrets/{name}",
+              "DELETE /api/apps/{id}/secrets/{name}"
             ]
           },
           {
@@ -156,7 +167,7 @@
           {
             "group": "Sandbox",
             "pages": [
-              "POST /api/apps/{id}/command",
+              "POST /api/apps/{id}/commands",
               "GET /api/apps/{id}/git",
               "POST /api/apps/{id}/commits",
               "GET /api/apps/{id}/commits",
@@ -202,6 +213,12 @@
               "POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/cancel",
               "POST /api/apps/{id}/sessions/{session_id}/turns/{turn_id}/decline",
               "GET /api/apps/{id}/sessions/{session_id}/events"
+            ]
+          },
+          {
+            "group": "Feedback",
+            "pages": [
+              "POST /api/feedback"
             ]
           }
         ]
