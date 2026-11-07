@@ -81,17 +81,17 @@ The **Effect** column shows the tool's annotations. Many clients use them to dec
 
 - **Read-only**: the tool changes nothing (`readOnlyHint`).
 - **Write**: the tool adds or changes data, but doesn't replace or remove data that exists.
-- **Destructive**: the tool can replace or remove data that exists (`destructiveHint`).
+- **Destructive**: the tool can replace or remove data that exists or the published App, change the App's address or access, or create an API key (`destructiveHint`).
 
 | Tool | What it does | API operation | Effect |
 | --- | --- | --- | --- |
 | `get_me` | Returns the person, the organization, the role, and whether the credential reaches one App or all Apps. | `GET /api/me` | Read-only |
 | `list_apps` | Lists the organization's Apps. To get one App with the status of its sandbox and production, pass `app_id`. | `GET /api/apps`<br />`GET /api/apps/{id}` | Read-only |
 | `create_app` | Creates an App from a template and reserves its address. | `POST /api/apps` | Write |
-| `update_app` | Changes the App's name, slug, or production access. | `PATCH /api/apps/{id}` | Write |
+| `update_app` | Changes the App's name, slug, or production access. | `PATCH /api/apps/{id}` | Destructive |
 | `delete_app` | Deletes the App. The deleted App stays readable for 30 days. | `DELETE /api/apps/{id}` | Destructive |
 | `create_visitor_token` | Creates a visitor token that opens the published App for 5 minutes without its password or sign-in. | `POST /api/apps/{id}/visitor-tokens` | Write |
-| `create_app_token` | Creates an App token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Write |
+| `create_app_token` | Creates an App token that reaches only one App, for up to 24 hours. | `POST /api/tokens` | Destructive |
 | `list_secrets` | Lists the App's Secrets by name. The result never includes values. | `GET /api/apps/{id}/secrets` | Read-only |
 | `request_secrets` | Asks the user to set Secrets on the App's Secrets page in the Judt dashboard, and returns which Secrets are set. | `GET /api/apps/{id}/secrets`<br />`GET /api/apps/{id}/secrets/{name}` | Read-only |
 | `generate_secret` | Creates a Secret with a random value: 32 bytes as base64url. If the Secret exists, returns `409 secret_exists`. | `PUT /api/apps/{id}/secrets/{name}` | Write |
@@ -106,7 +106,7 @@ The **Effect** column shows the tool's annotations. Many clients use them to dec
 | `create_commit` | Commits the sandbox's changes and backs up the commit. | `POST /api/apps/{id}/commits` | Write |
 | `restore_commit` | Resets the sandbox's files to a commit. Production doesn't change. | `POST /api/apps/{id}/restore` | Destructive |
 | `create_preview` | Returns a short-lived URL to the sandbox's dev server. If the App doesn't build, returns `422 preview_failed`. | `POST /api/apps/{id}/preview` | Write |
-| `deploy` | Publishes the App to production and waits until the new version serves. | `POST /api/apps/{id}/deployments` | Write |
+| `deploy` | Publishes the App to production and waits until the new version serves. | `POST /api/apps/{id}/deployments` | Destructive |
 | `list_deployments` | Lists the App's deployments. To get one deployment with its status and database migrations, pass `deployment_id`. | `GET /api/apps/{id}/deployments`<br />`GET /api/apps/{id}/deployments/{deployment_id}` | Read-only |
 | `unpublish_app` | Takes the App offline. The next deployment publishes the App again. | `POST /api/apps/{id}/unpublish` | Destructive |
 | `list_events` | Lists what happened to the App's sandbox, deployments, and deletion. | `GET /api/apps/{id}/events` | Read-only |
